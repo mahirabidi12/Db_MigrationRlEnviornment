@@ -1,0 +1,54 @@
+"""Task registry — central lookup for all migration tasks."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, List
+
+from db_migration_env.tasks import task_easy, task_medium, task_hard
+
+
+@dataclass(frozen=True)
+class TaskDefinition:
+    task_id: str
+    description: str
+    difficulty: str
+    max_steps: int
+    initial_sql: str
+    target_sql: str
+
+
+def _load(mod) -> TaskDefinition:
+    return TaskDefinition(
+        task_id=mod.TASK_ID,
+        description=mod.TASK_DESCRIPTION,
+        difficulty=mod.DIFFICULTY,
+        max_steps=mod.MAX_STEPS,
+        initial_sql=mod.INITIAL_SQL,
+        target_sql=mod.TARGET_SQL,
+    )
+
+
+TASK_REGISTRY: Dict[str, TaskDefinition] = {
+    task_easy.TASK_ID: _load(task_easy),
+    task_medium.TASK_ID: _load(task_medium),
+    task_hard.TASK_ID: _load(task_hard),
+}
+
+
+def get_task(task_id: str) -> TaskDefinition:
+    if task_id not in TASK_REGISTRY:
+        raise ValueError(f"Unknown task '{task_id}'. Available: {list(TASK_REGISTRY.keys())}")
+    return TASK_REGISTRY[task_id]
+
+
+def list_tasks() -> List[Dict]:
+    return [
+        {
+            "task_id": t.task_id,
+            "description": t.description,
+            "difficulty": t.difficulty,
+            "max_steps": t.max_steps,
+        }
+        for t in TASK_REGISTRY.values()
+    ]
