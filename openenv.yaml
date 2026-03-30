@@ -4,11 +4,9 @@ version: "1.0.0"
 type: space
 runtime: fastapi
 description: >
-  RL environment for database schema & data migration.
-  Agents execute SQL statements to transform a source database into a target schema
-  with correct data — simulating real-world database migration workflows.
-  Features 3 tasks (easy/medium/hard) with deduplication, computed columns,
-  FK management, and cross-table joins.
+  RL environment for production-scale database migration.
+  Agents execute SQL to transform legacy schemas (10-20 tables) into normalized
+  production-grade schemas (15-25 tables) with proper FKs, constraints, and computed tables.
 app: db_migration_env.server.app:app
 port: 8000
 
@@ -17,12 +15,12 @@ observation: MigrationObservation
 state: MigrationState
 
 tasks:
-  - id: easy_restructure_employees
+  - id: easy_blog_fix_fks
     difficulty: easy
-    description: Restructure employees table, extract departments, add computed hire_year and audit log
-  - id: medium_school_normalize
+    description: "Blog platform: 10 tables → 15 tables. Fix email-based refs to FK IDs, split users, add computed tables."
+  - id: medium_university_lms
     difficulty: medium
-    description: Normalize 2 tables into 5 with computed GPA, junction tables, and aggregated stats
-  - id: hard_saas_overhaul
+    description: "University LMS: 15 tables → 21 tables. Normalize, split addresses, compute stats, handle polymorphic refs."
+  - id: hard_ecommerce_overhaul
     difficulty: hard
-    description: Decompose 3 legacy SaaS tables into 7 normalized tables with computed totals and cross-table dedup
+    description: "E-commerce SaaS: 20 tables → 25 tables. Full overhaul with FK normalization, table merging, computed analytics."

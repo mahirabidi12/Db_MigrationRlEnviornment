@@ -98,6 +98,17 @@ The reward pipeline provides **dense, multi-signal feedback at every step** acro
 - **Safety-aware**: Agents learn that `DROP TABLE` on tables with data is dangerous
 - **Milestone momentum**: Sub-goal bonuses provide clear intermediate objectives for the agent
 
+### Final Grader (4 dimensions, /grader endpoint)
+
+| Dimension | Weight | What it checks |
+|-----------|--------|---------------|
+| **Schema Correctness** | 30% | Tables, columns, types, PKs, FKs, NOT NULL, defaults — penalizes extras |
+| **Data Correctness** | 35% | Row-level comparison with numeric tolerance (handles float rounding, int/float equivalence) |
+| **Referential Integrity** | 20% | Verifies FK constraints are satisfied in data — no orphan rows, every `customer_id` actually points to a valid customer |
+| **Efficiency** | 15% | Fewer steps + fewer errors = higher score |
+
+The integrity dimension is what separates good agents from great ones: an agent that creates correct tables but inserts `customer_id=99` when no customer #99 exists will be penalized.
+
 ---
 
 ## Tasks

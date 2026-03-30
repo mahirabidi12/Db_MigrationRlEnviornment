@@ -137,6 +137,78 @@ class DatabaseEngine:
             ))
         return SchemaSnapshot(tables=tables)
 
+    def check_referential_integrity(self) -> List[Dict[str, Any]]:
+        """Check all FK constraints and return violations.
+
+        Returns a list of dicts: {table, fk_column, to_table, to_column, orphan_count, sample_orphans}
+        """
+        violations = []
+        for table in self.get_tables():
+            fks = self.get_foreign_keys(table)
+            for fk in fks:
+                try:
+                    sql = (
+                        f'SELECT COUNT(*) FROM "{table}" '
+                        f'WHERE "{fk.from_column}" IS NOT NULL '
+                        f'AND "{fk.from_column}" NOT IN '
+                        f'(SELECT "{fk.to_column}" FROM "{fk.to_table}")'
+                    )
+                    cur = self.conn.execute(sql)
+                    orphan_count = cur.fetchone()[0]
+                    if orphan_count > 0:
+                        sample_sql = (
+                            f'SELECT DISTINCT "{fk.from_column}" FROM "{table}" '
+                            f'WHERE "{fk.from_column}" IS NOT NULL '
+                            f'AND "{fk.from_column}" NOT IN '
+                            f'(SELECT "{fk.to_column}" FROM "{fk.to_table}") LIMIT 5'
+                        )
+                        sample_cur = self.conn.execute(sample_sql)
+                        samples = [r[0] for r in sample_cur.fetchall()]
+                        violations.append({
+                            "table": table,
+                            "fk_column": fk.from_column,
+                            "to_table": fk.to_table,
+                            "to_column": fk.to_column,
+                            "orphan_count": orphan_count,
+                            "sample_orphans": samples,
+                        })
+                except Exception:
+                    pass
+        return violations
+
+    def compute_integrity_score(self) -> float:
+        """Score 0.0-1.0 for referential integrity of current data.
+
+        1.0 = no FK violations, 0.0 = every FK has orphans.
+        """
+        tables = self.get_tables()
+        if not tables:
+            return 1.0
+
+        total_fks = 0
+        clean_fks = 0
+        for table in tables:
+            fks = self.get_foreign_keys(table)
+            for fk in fks:
+                total_fks += 1
+                try:
+                    sql = (
+                        f'SELECT COUNT(*) FROM "{table}" '
+                        f'WHERE "{fk.from_column}" IS NOT NULL '
+                        f'AND "{fk.from_column}" NOT IN '
+                        f'(SELECT "{fk.to_column}" FROM "{fk.to_table}")'
+                    )
+                    cur = self.conn.execute(sql)
+                    orphans = cur.fetchone()[0]
+                    if orphans == 0:
+                        clean_fks += 1
+                except Exception:
+                    pass
+
+        if total_fks == 0:
+            return 1.0
+        return clean_fks / total_fks
+
     def get_table_data(self, table: str) -> List[Dict[str, Any]]:
         """Get all rows from a table as list of dicts."""
         try:
