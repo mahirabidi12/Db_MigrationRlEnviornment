@@ -1,0 +1,26 @@
+spec_version: 1
+name: db-migration-env
+version: "1.0.0"
+type: space
+runtime: fastapi
+description: >
+  RL environment for production-scale database migration.
+  Agents execute SQL to transform legacy schemas (10-20 tables) into normalized
+  production-grade schemas (15-25 tables) with proper FKs, constraints, and computed tables.
+app: db_migration_env.server.app:app
+port: 8000
+
+action: MigrationAction
+observation: MigrationObservation
+state: MigrationState
+
+tasks:
+  - id: easy_blog_fix_fks
+    difficulty: easy
+    description: "Blog platform: 10 tables → 15 tables. Fix email-based refs to FK IDs, split users, add computed tables."
+  - id: medium_university_lms
+    difficulty: medium
+    description: "University LMS: 15 tables → 21 tables. Normalize, split addresses, compute stats, handle polymorphic refs."
+  - id: hard_ecommerce_overhaul
+    difficulty: hard
+    description: "E-commerce SaaS: 20 tables → 25 tables. Full overhaul with FK normalization, table merging, computed analytics."
