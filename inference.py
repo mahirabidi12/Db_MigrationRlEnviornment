@@ -100,6 +100,13 @@ def format_observation(obs: MigrationObservation, include_data_sample: bool = Tr
             lines.append(f"  TABLE {table.name} ({', '.join(cols)})  -- {table.row_count} rows")
             for fk in table.foreign_keys:
                 lines.append(f"    FOREIGN KEY ({fk.from_column}) REFERENCES {fk.to_table}({fk.to_column})")
+            # Data preview — crucial for agents to understand the data
+            if include_data_sample and table.data_preview:
+                col_names = [c.name for c in table.columns]
+                lines.append(f"    Sample data ({min(len(table.data_preview), 3)} of {table.row_count} rows):")
+                for row in table.data_preview[:3]:
+                    vals = [str(row.get(c, "")) for c in col_names]
+                    lines.append(f"      | {' | '.join(vals)} |")
         lines.append("")
 
     if obs.schema_diff:

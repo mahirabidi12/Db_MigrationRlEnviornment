@@ -64,19 +64,39 @@ class MigrationObservation(BaseModel):
 
 Each `SchemaSnapshot` contains detailed table info: columns (name, type, constraints), foreign keys, indexes, and row counts.
 
-## Reward Function
+## Reward Function — 7-Dimensional Signal
 
-The reward provides **dense signal at every step** — not just a binary end score:
+The reward pipeline provides **dense, multi-signal feedback at every step** across 7 dimensions — not just a binary end score. Each step returns a full breakdown in `metadata.reward_breakdown`:
 
-| Component | Weight | Description |
-|-----------|--------|-------------|
-| **Schema similarity** | 40% | How close the current schema matches the target (tables, columns, types, constraints, FKs). Penalizes extra tables and extra columns. |
-| **Data correctness** | 45% | Row-level comparison of data content against target |
-| **Efficiency** | 15% | Bonus for fewer steps, penalty for SQL errors |
+| Signal | Weight | Description |
+|--------|--------|-------------|
+| **Schema Progress** | 35% | Delta in structural similarity (tables, columns, types, FKs) |
+| **Data Progress** | 40% | Delta in row-level data correctness (harder, so weighted more) |
+| **Diff Reduction** | 10% | Bonus for reducing the number of schema diff items |
+| **Milestone Bonus** | absolute | One-time rewards for key sub-goals (see below) |
+| **Error Penalty** | absolute | Escalating penalty for consecutive errors (-0.02, -0.04, -0.06...) |
+| **Efficiency Cost** | absolute | Quadratic time-pressure curve (cheap early, costly near deadline) |
+| **Safety Penalty** | absolute | Penalizes data-destructive actions (DROP with data, DELETE without WHERE) |
 
-**Step reward** = progress delta (current score - previous score) - small step cost - error penalty
+### Milestone System (8 one-time bonuses)
+| Milestone | Bonus | Triggered When |
+|-----------|-------|----------------|
+| `first_target_table` | +0.05 | First target table created |
+| `all_tables_exist` | +0.08 | All target tables now exist |
+| `first_fk_correct` | +0.03 | First foreign key matches target |
+| `all_fks_correct` | +0.06 | All foreign keys correct |
+| `first_data_match` | +0.04 | First table's data fully matches target |
+| `all_data_match` | +0.10 | All target data matches (biggest bonus) |
+| `schema_perfect` | +0.06 | Schema score hits 1.0 |
+| `source_tables_dropped` | +0.04 | All legacy source tables removed |
 
-This means the agent gets **positive reward** when it makes progress (e.g., creating a missing table) and **negative reward** when it makes mistakes (e.g., invalid SQL).
+### Design Properties
+- **Dense gradient**: Every step has meaningful signal (not sparse end-of-episode)
+- **Progress-aware**: Positive reward for moving closer to target, negative for regression
+- **Escalating errors**: First error is mild (-0.02), but 5 consecutive errors cost -0.10 total
+- **Time pressure**: Quadratic cost curve encourages finishing early without being punishing at the start
+- **Safety-aware**: Agents learn that `DROP TABLE` on tables with data is dangerous
+- **Milestone momentum**: Sub-goal bonuses provide clear intermediate objectives for the agent
 
 ---
 

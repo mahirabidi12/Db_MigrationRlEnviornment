@@ -41,11 +41,13 @@ class ResetRequest(BaseModel):
     task_id: Optional[str] = None
     seed: Optional[int] = None
     episode_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class StepRequest(BaseModel):
     sql: str
     metadata: Dict[str, Any] = {}
+    session_id: Optional[str] = None
 
 
 class ResetResponse(BaseModel):
@@ -104,22 +106,22 @@ except ImportError:
 
 @app.post("/reset", response_model=ResetResponse)
 async def reset(req: ResetRequest = ResetRequest()):
-    env = _get_env()
+    env = _get_env(req.session_id or "default")
     obs = env.reset(task_id=req.task_id, seed=req.seed, episode_id=req.episode_id)
     return ResetResponse(observation=obs)
 
 
 @app.post("/step", response_model=StepResponse)
 async def step(req: StepRequest):
-    env = _get_env()
+    env = _get_env(req.session_id or "default")
     action = MigrationAction(sql=req.sql, metadata=req.metadata)
     obs = env.step(action)
     return StepResponse(observation=obs, reward=obs.reward, done=obs.done)
 
 
 @app.get("/state")
-async def state():
-    env = _get_env()
+async def state(session_id: Optional[str] = "default"):
+    env = _get_env(session_id)
     return env.state.model_dump()
 
 

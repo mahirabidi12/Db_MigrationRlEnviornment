@@ -56,6 +56,10 @@ class TableSchema(BaseModel):
     foreign_keys: List[ForeignKeyInfo] = Field(default_factory=list)
     indexes: List[IndexInfo] = Field(default_factory=list)
     row_count: int = 0
+    data_preview: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="First 5 rows of data for agent visibility.",
+    )
 
 
 class SchemaSnapshot(BaseModel):

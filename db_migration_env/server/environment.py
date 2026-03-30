@@ -18,6 +18,11 @@ from db_migration_env.models import (
     MigrationState,
     SchemaSnapshot,
 )
+from db_migration_env.reward import (
+    RewardState,
+    compute_step_reward,
+    init_reward_state,
+)
 from db_migration_env.tasks.registry import TASK_REGISTRY, TaskDefinition, get_task
 
 
@@ -37,7 +42,8 @@ class MigrationEnvironment:
         self._error_count: int = 0
         self._sql_history: list[str] = []
         self._target_schema: Optional[SchemaSnapshot] = None
-        self._prev_score: float = 0.0
+        self._reward_state: Optional[RewardState] = None
+        self._last_reward_breakdown: Optional[dict] = None
 
     # ------------------------------------------------------------------
     # reset
@@ -75,9 +81,20 @@ class MigrationEnvironment:
         self._cumulative_reward = 0.0
         self._error_count = 0
         self._sql_history = []
-        self._prev_score = 0.0
+        self._last_reward_breakdown = None
 
-        return self._build_observation(last_result="Episode started. Execute SQL to migrate the database.", last_error=False)
+        # Initialize the multi-signal reward pipeline
+        self._reward_state = init_reward_state(
+            current_db=self.current_db,
+            target_schema=self._target_schema,
+            target_db=self.target_db,
+            max_steps=self.task.max_steps,
+        )
+
+        return self._build_observation(
+            last_result="Episode started. Execute SQL to migrate the database.",
+            last_error=False,
+        )
 
     # ------------------------------------------------------------------
     # step
@@ -99,30 +116,29 @@ class MigrationEnvironment:
         if not success:
             self._error_count += 1
 
-        # Compute current score for reward shaping
-        current_schema = self.current_db.get_schema_snapshot()
-        schema_score = compute_schema_score(current_schema, self._target_schema)
-        data_score = compute_data_score(self.current_db, self.target_db, self._target_schema)
-        current_score = 0.45 * schema_score + 0.45 * data_score
-
-        # Reward = progress delta (positive if agent got closer to target)
-        step_reward = current_score - self._prev_score
-        # Small penalty for errors to discourage random SQL
-        if not success:
-            step_reward -= 0.02
-        # Small step cost to encourage efficiency
-        step_reward -= 0.005
-
-        self._prev_score = current_score
+        # ── Multi-signal reward computation ─────────────────────────────
+        breakdown = compute_step_reward(
+            reward_state=self._reward_state,
+            current_db=self.current_db,
+            target_db=self.target_db,
+            target_schema=self._target_schema,
+            sql=action.sql,
+            success=success,
+        )
+        step_reward = breakdown.total
         self._cumulative_reward += step_reward
+        self._last_reward_breakdown = breakdown.to_dict()
 
-        # Check if done
+        # ── Check termination (reuse scores from reward computation) ────
+        schema_score = self._reward_state.prev_schema_score
+        data_score = self._reward_state.prev_data_score
+
         if self._step_count >= self.task.max_steps:
             self._done = True
         elif schema_score >= 0.99 and data_score >= 0.99:
-            # Perfect migration — end early with bonus
+            # Perfect migration — end early with completion bonus
             self._done = True
-            self._cumulative_reward += 0.1  # bonus for early completion
+            self._cumulative_reward += 0.10
 
         return self._build_observation(
             last_result=result,
@@ -159,7 +175,7 @@ class MigrationEnvironment:
         """Grade the current episode. Can be called at any time."""
         if not self.current_db or not self.target_db or not self._target_schema:
             return {"error": "No active episode. Call reset() first.", "total_score": 0.0}
-        return self.grader.detailed_grade(
+        result = self.grader.detailed_grade(
             current_db=self.current_db,
             target_db=self.target_db,
             target_schema=self._target_schema,
@@ -167,6 +183,18 @@ class MigrationEnvironment:
             max_steps=self.task.max_steps if self.task else 1,
             error_count=self._error_count,
         )
+        # Attach milestone info and reward breakdown for transparency
+        if self._reward_state:
+            result["milestones_achieved"] = sorted(self._reward_state.milestones_achieved)
+            result["milestones_remaining"] = sorted(
+                set(["first_target_table", "all_tables_exist", "first_fk_correct",
+                     "all_fks_correct", "first_data_match", "all_data_match",
+                     "schema_perfect", "source_tables_dropped"])
+                - self._reward_state.milestones_achieved
+            )
+        if self._last_reward_breakdown:
+            result["last_reward_breakdown"] = self._last_reward_breakdown
+        return result
 
     # ------------------------------------------------------------------
     # helpers
@@ -181,6 +209,17 @@ class MigrationEnvironment:
         current_schema = self.current_db.get_schema_snapshot() if self.current_db else SchemaSnapshot()
         target_schema = self._target_schema or SchemaSnapshot()
         diff = compute_schema_diff(current_schema, target_schema)
+
+        metadata = {
+            "episode_id": self._episode_id,
+            "cumulative_reward": round(self._cumulative_reward, 4),
+            "error_count": self._error_count,
+        }
+        if self._last_reward_breakdown:
+            metadata["reward_breakdown"] = self._last_reward_breakdown
+        if self._reward_state:
+            metadata["milestones"] = sorted(self._reward_state.milestones_achieved)
+
         return MigrationObservation(
             current_schema=current_schema,
             target_schema=target_schema,
@@ -193,11 +232,7 @@ class MigrationEnvironment:
             task_description=self.task.description if self.task else "",
             reward=reward,
             done=self._done,
-            metadata={
-                "episode_id": self._episode_id,
-                "cumulative_reward": round(self._cumulative_reward, 4),
-                "error_count": self._error_count,
-            },
+            metadata=metadata,
         )
 
     def close(self) -> None:

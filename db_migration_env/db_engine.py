@@ -121,15 +121,19 @@ class DatabaseEngine:
         except Exception:
             return 0
 
-    def get_schema_snapshot(self) -> SchemaSnapshot:
+    def get_schema_snapshot(self, include_data_preview: bool = True) -> SchemaSnapshot:
         tables = []
         for tname in self.get_tables():
+            preview = []
+            if include_data_preview:
+                preview = self.get_table_data(tname)[:5]  # First 5 rows
             tables.append(TableSchema(
                 name=tname,
                 columns=self.get_columns(tname),
                 foreign_keys=self.get_foreign_keys(tname),
                 indexes=self.get_indexes(tname),
                 row_count=self.get_row_count(tname),
+                data_preview=preview,
             ))
         return SchemaSnapshot(tables=tables)
 
@@ -194,6 +198,12 @@ def compute_schema_diff(current: SchemaSnapshot, target: SchemaSnapshot) -> List
                         detail=f"Column '{cname}': constraint mismatch "
                                f"(notnull={ccol.notnull}->{tcol.notnull}, pk={ccol.is_pk}->{tcol.is_pk}).",
                     ))
+                if _normalize_default(ccol.default_value) != _normalize_default(tcol.default_value):
+                    diffs.append(SchemaDiffItem(
+                        category="constraint_mismatch", table=tname,
+                        detail=f"Column '{cname}': default value mismatch "
+                               f"('{ccol.default_value}' vs '{tcol.default_value}').",
+                    ))
 
         for cname in ccols:
             if cname not in tcols:
@@ -242,12 +252,14 @@ def compute_schema_score(current: SchemaSnapshot, target: SchemaSnapshot) -> flo
                 # Column existence: 1 point
                 total_points += 1.0
                 if cname in ccols:
-                    earned_points += 0.5  # exists
+                    earned_points += 0.4  # exists
                     ccol = ccols[cname]
                     if _normalize_type(ccol.type) == _normalize_type(tcol.type):
-                        earned_points += 0.3  # type matches
+                        earned_points += 0.25  # type matches
                     if ccol.notnull == tcol.notnull and ccol.is_pk == tcol.is_pk:
                         earned_points += 0.2  # constraints match
+                    if _normalize_default(ccol.default_value) == _normalize_default(tcol.default_value):
+                        earned_points += 0.15  # default matches
                 else:
                     pass  # 0 points
 
@@ -286,7 +298,11 @@ def compute_data_score(
     target_db: DatabaseEngine,
     target_schema: SchemaSnapshot,
 ) -> float:
-    """Score 0.0-1.0 measuring how well the data matches the target."""
+    """Score 0.0-1.0 measuring how well the data matches the target.
+
+    Uses numeric-aware comparison with tolerance for floating-point differences,
+    and multiset matching to correctly handle duplicate rows.
+    """
     if not target_schema.tables:
         return 1.0
 
@@ -299,36 +315,37 @@ def compute_data_score(
         current_data = current_db.get_table_data(tname)
 
         if not target_data:
-            # No target data for this table — full marks if table exists
+            # No target data — score based on whether the table exists
             total_points += 1.0
-            if current_db.get_row_count(tname) >= 0:
-                try:
-                    current_db.conn.execute(f"SELECT 1 FROM '{tname}' LIMIT 1")
-                    earned_points += 1.0
-                except Exception:
-                    pass
+            if tname in [t.name for t in current_db.get_schema_snapshot().tables]:
+                earned_points += 1.0
             continue
 
-        # Row count score
-        total_points += 1.0
         t_count = len(target_data)
         c_count = len(current_data)
+
+        # Row count score (1 point)
+        total_points += 1.0
         if t_count > 0:
             count_ratio = min(c_count, t_count) / t_count
-            earned_points += count_ratio * 0.5  # up to 0.5 for row count
+            count_penalty = abs(c_count - t_count) / max(t_count, 1)
+            earned_points += max(0.0, count_ratio - 0.2 * count_penalty)
 
-        # Data content matching
-        # Normalize rows to comparable form (sorted by values)
+        # Data content matching using multiset (handles duplicate rows correctly)
         target_cols = [c.name for c in ttable.columns]
-        t_rows_set = _rows_to_comparable(target_data, target_cols)
-        c_rows_set = _rows_to_comparable(current_data, target_cols)
+        t_rows = _rows_to_multiset(target_data, target_cols)
+        c_rows = _rows_to_multiset(current_data, target_cols)
 
-        if t_rows_set:
-            total_points += len(t_rows_set)
-            matched = len(t_rows_set & c_rows_set)
-            earned_points += matched
-            # Partial credit for matching the row count
-            earned_points += 0.5 * (1.0 - abs(len(c_rows_set) - len(t_rows_set)) / max(len(t_rows_set), 1))
+        if t_rows:
+            total_points += len(target_data)  # 1 point per target row
+            # Match rows greedily: for each target row, find best match in current
+            c_remaining = dict(c_rows)  # mutable copy of counts
+            for row_key, t_count_for_key in t_rows.items():
+                c_available = c_remaining.get(row_key, 0)
+                matched = min(t_count_for_key, c_available)
+                earned_points += matched
+                if c_available > 0:
+                    c_remaining[row_key] = c_available - matched
         else:
             total_points += 1.0
             earned_points += 1.0
@@ -338,16 +355,50 @@ def compute_data_score(
     return max(0.0, min(1.0, earned_points / total_points))
 
 
-def _rows_to_comparable(rows: List[Dict[str, Any]], cols: List[str]) -> set:
-    """Convert rows to a set of tuples for comparison (order-independent)."""
-    result = set()
+def _normalize_value(v: Any) -> str:
+    """Normalize a cell value for comparison with numeric tolerance.
+
+    Handles: int/float equivalence (3 == 3.0), rounding tolerance (3.7 vs 3.7000001),
+    NULL normalization, and whitespace stripping.
+    """
+    if v is None:
+        return "NULL"
+    if isinstance(v, float):
+        # Round to 2 decimal places for tolerance
+        rounded = round(v, 2)
+        # Represent as integer if it's a whole number (3.0 -> "3")
+        if rounded == int(rounded):
+            return str(int(rounded))
+        return f"{rounded:.2f}"
+    if isinstance(v, int):
+        return str(v)
+    # String: try to parse as number for tolerance
+    s = str(v).strip()
+    try:
+        fval = float(s)
+        rounded = round(fval, 2)
+        if rounded == int(rounded):
+            return str(int(rounded))
+        return f"{rounded:.2f}"
+    except (ValueError, OverflowError):
+        return s
+
+
+def _rows_to_multiset(rows: List[Dict[str, Any]], cols: List[str]) -> Dict[tuple, int]:
+    """Convert rows to a multiset (dict of tuple -> count) for order-independent
+    comparison that correctly handles duplicate rows."""
+    result: Dict[tuple, int] = {}
     for row in rows:
-        vals = []
-        for c in cols:
-            v = row.get(c)
-            vals.append(str(v).strip() if v is not None else "NULL")
-        result.add(tuple(vals))
+        vals = tuple(_normalize_value(row.get(c)) for c in cols)
+        result[vals] = result.get(vals, 0) + 1
     return result
+
+
+def _normalize_default(d: Optional[str]) -> str:
+    """Normalize default values for comparison."""
+    if d is None:
+        return ""
+    return str(d).strip().strip("'\"")
 
 
 def _normalize_type(t: str) -> str:
