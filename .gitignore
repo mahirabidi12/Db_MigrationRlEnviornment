@@ -9,3 +9,4 @@ build/
 .pytest_cache/
 project_idea.md
 .claude/
+agent_run

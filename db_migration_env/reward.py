@@ -97,8 +97,8 @@ MILESTONES = {
 
 # ── Reward Weights ──────────────────────────────────────────────────────────
 
-W_SCHEMA_PROGRESS = 0.35     # Reward for schema improvement
-W_DATA_PROGRESS = 0.40       # Reward for data improvement (harder, so weighted more)
+W_SCHEMA_PROGRESS = 0.40     # Reward for schema improvement
+W_DATA_PROGRESS = 0.40       # Reward for data improvement
 W_DIFF_REDUCTION = 0.10      # Reward for reducing diff item count
 W_MILESTONE = 1.0            # Milestones are absolute bonuses (not weighted further)
 W_ERROR_PENALTY = 1.0        # Errors are absolute penalties

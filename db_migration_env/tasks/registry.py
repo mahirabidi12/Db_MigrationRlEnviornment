@@ -32,7 +32,7 @@ def _load(mod) -> TaskDefinition:
 TASK_REGISTRY: Dict[str, TaskDefinition] = {
     task_easy.TASK_ID: _load(task_easy),
     task_medium.TASK_ID: _load(task_medium),
-    task_hard.TASK_ID: _load(task_hard),
+    task_hard.TASK_ID: _load(task_hard),  # hard_ecommerce_acquisition
 }
 
 
