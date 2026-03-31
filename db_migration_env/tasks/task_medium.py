@@ -44,7 +44,7 @@ TASK_DESCRIPTION = (
     "Preserve all data with referential integrity."
 )
 DIFFICULTY = "medium"
-MAX_STEPS = 120
+TIMEOUT_SECONDS = 1800  # 30 minutes
 
 INITIAL_SQL = """
 CREATE TABLE legacy_students (

@@ -134,7 +134,7 @@ def main():
     env = MigrationEnvironment()
     obs = env.reset(task_id=list(TASK_REGISTRY.keys())[0])
     required_fields = ["current_schema", "target_schema", "schema_diff", "step_count",
-                       "max_steps", "task_id", "done", "reward"]
+                       "timeout_seconds", "task_id", "done", "reward"]
     obs_dict = obs.model_dump()
     for f in required_fields:
         total += 1
@@ -148,9 +148,9 @@ def main():
     obs = env.reset(task_id="easy_blog_acquisition")
     rewards = []
     test_sqls = [
-        "CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, floor INTEGER NOT NULL)",
-        "SELECT * FROM employees",
-        "INSERT INTO departments SELECT ROW_NUMBER() OVER (ORDER BY MIN(id)), department_name, department_floor FROM employees GROUP BY department_name",
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, full_name TEXT NOT NULL, created_at TEXT NOT NULL)",
+        "INSERT INTO users SELECT usr_id, usr_name, usr_email, usr_pass, usr_fullname, created FROM acme_users",
+        "SELECT * FROM users",
     ]
     for sql in test_sqls:
         obs = env.step(MigrationAction(sql=sql))

@@ -41,7 +41,7 @@ TASK_DESCRIPTION = (
     "Preserve all data with full referential integrity across 25 target tables."
 )
 DIFFICULTY = "hard"
-MAX_STEPS = 150
+TIMEOUT_SECONDS = 1800  # 30 minutes
 
 INITIAL_SQL = """
 -- ============================================================

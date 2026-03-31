@@ -6,7 +6,8 @@ runtime: fastapi
 description: >
   RL environment for production-scale database migration.
   Agents execute SQL to transform legacy schemas (10-20 tables) into normalized
-  production-grade schemas (15-25 tables) with proper FKs, constraints, and computed tables.
+  production-grade schemas (15-25 tables). Acquisition theme with zero initial overlap.
+  30-minute timeout per task. Checklist-based grader with 543-1132 binary checks.
 app: db_migration_env.server.app:app
 port: 8000
 
@@ -15,12 +16,15 @@ observation: MigrationObservation
 state: MigrationState
 
 tasks:
-  - id: easy_blog_fix_fks
+  - id: easy_blog_acquisition
     difficulty: easy
-    description: "Blog platform: 10 tables → 15 tables. Fix email-based refs to FK IDs, split users, add computed tables."
-  - id: medium_university_lms
+    timeout: 1800
+    description: "Acme Corp blog → GlobalTech: 10 acme_* tables → 15 standard tables. Fix FKs, split users, add computed tables."
+  - id: medium_lms_acquisition
     difficulty: medium
-    description: "University LMS: 15 tables → 21 tables. Normalize, split addresses, compute stats, handle polymorphic refs."
-  - id: hard_ecommerce_overhaul
+    timeout: 1800
+    description: "Legacy LMS → EduCloud: 15 legacy_* tables → 21 standard tables. Normalize, split addresses, compute stats."
+  - id: hard_ecommerce_acquisition
     difficulty: hard
-    description: "E-commerce SaaS: 20 tables → 25 tables. Full overhaul with FK normalization, table merging, computed analytics."
+    timeout: 1800
+    description: "OldShop → MegaMart: 20 old_* tables → 25 standard tables. Full overhaul with FK normalization and analytics."
