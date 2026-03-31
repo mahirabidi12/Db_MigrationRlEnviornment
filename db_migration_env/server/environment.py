@@ -7,9 +7,7 @@ from typing import Optional
 
 from db_migration_env.db_engine import (
     DatabaseEngine,
-    compute_data_score,
     compute_schema_diff,
-    compute_schema_score,
 )
 from db_migration_env.graders.migration_grader import MigrationGrader
 from db_migration_env.models import (
@@ -42,6 +40,7 @@ class MigrationEnvironment:
         self._error_count: int = 0
         self._sql_history: list[str] = []
         self._target_schema: Optional[SchemaSnapshot] = None
+        self._initial_schema: Optional[SchemaSnapshot] = None
         self._reward_state: Optional[RewardState] = None
         self._last_reward_breakdown: Optional[dict] = None
 
@@ -56,7 +55,6 @@ class MigrationEnvironment:
         episode_id: Optional[str] = None,
     ) -> MigrationObservation:
         """Start a new episode. If task_id is None, defaults to easy."""
-        # Clean up previous episode
         if self.current_db:
             self.current_db.close()
         if self.target_db:
@@ -65,16 +63,13 @@ class MigrationEnvironment:
         task_id = task_id or "easy_blog_acquisition"
         self.task = get_task(task_id)
 
-        # Set up current DB with initial state
         self.current_db = DatabaseEngine()
         self.current_db.execute_script(self.task.initial_sql)
 
-        # Set up target DB (ground truth)
         self.target_db = DatabaseEngine()
         self.target_db.execute_script(self.task.target_sql)
         self._target_schema = self.target_db.get_schema_snapshot()
 
-        # Episode metadata
         self._episode_id = episode_id or str(uuid.uuid4())
         self._step_count = 0
         self._done = False
@@ -82,13 +77,15 @@ class MigrationEnvironment:
         self._error_count = 0
         self._sql_history = []
         self._last_reward_breakdown = None
+        self._initial_schema = self.current_db.get_schema_snapshot(include_data_preview=False)
 
-        # Initialize the multi-signal reward pipeline
+        # Initialize reward — runs grader once to get baseline score (0.0)
         self._reward_state = init_reward_state(
             current_db=self.current_db,
-            target_schema=self._target_schema,
             target_db=self.target_db,
-            max_steps=self.task.max_steps,
+            target_schema=self._target_schema,
+            initial_schema=self._initial_schema,
+            grader=self.grader,
         )
 
         return self._build_observation(
@@ -111,17 +108,18 @@ class MigrationEnvironment:
         self._step_count += 1
         self._sql_history.append(action.sql)
 
-        # Execute SQL
         success, result = self.current_db.execute(action.sql)
         if not success:
             self._error_count += 1
 
-        # ── Multi-signal reward computation ─────────────────────────────
+        # reward = grader_after - grader_before
         breakdown = compute_step_reward(
             reward_state=self._reward_state,
             current_db=self.current_db,
             target_db=self.target_db,
             target_schema=self._target_schema,
+            initial_schema=self._initial_schema,
+            grader=self.grader,
             sql=action.sql,
             success=success,
         )
@@ -129,16 +127,11 @@ class MigrationEnvironment:
         self._cumulative_reward += step_reward
         self._last_reward_breakdown = breakdown.to_dict()
 
-        # ── Check termination (reuse scores from reward computation) ────
-        schema_score = self._reward_state.prev_schema_score
-        data_score = self._reward_state.prev_data_score
-
+        # Check termination
         if self._step_count >= self.task.max_steps:
             self._done = True
-        elif schema_score >= 0.99 and data_score >= 0.99:
-            # Perfect migration — end early with completion bonus
+        elif self._reward_state.prev_score >= 0.99:
             self._done = True
-            self._cumulative_reward += 0.10
 
         return self._build_observation(
             last_result=result,
@@ -168,11 +161,11 @@ class MigrationEnvironment:
         )
 
     # ------------------------------------------------------------------
-    # grade (for /grader endpoint)
+    # grade
     # ------------------------------------------------------------------
 
     def grade(self) -> dict:
-        """Grade the current episode. Can be called at any time."""
+        """Grade the current episode using the checklist grader."""
         if not self.current_db or not self.target_db or not self._target_schema:
             return {"error": "No active episode. Call reset() first.", "total_score": 0.0}
         result = self.grader.detailed_grade(
@@ -182,16 +175,8 @@ class MigrationEnvironment:
             steps_taken=self._step_count,
             max_steps=self.task.max_steps if self.task else 1,
             error_count=self._error_count,
+            initial_schema=self._initial_schema,
         )
-        # Attach milestone info and reward breakdown for transparency
-        if self._reward_state:
-            result["milestones_achieved"] = sorted(self._reward_state.milestones_achieved)
-            result["milestones_remaining"] = sorted(
-                set(["first_target_table", "all_tables_exist", "first_fk_correct",
-                     "all_fks_correct", "first_data_match", "all_data_match",
-                     "schema_perfect", "source_tables_dropped"])
-                - self._reward_state.milestones_achieved
-            )
         if self._last_reward_breakdown:
             result["last_reward_breakdown"] = self._last_reward_breakdown
         return result
@@ -217,8 +202,6 @@ class MigrationEnvironment:
         }
         if self._last_reward_breakdown:
             metadata["reward_breakdown"] = self._last_reward_breakdown
-        if self._reward_state:
-            metadata["milestones"] = sorted(self._reward_state.milestones_achieved)
 
         return MigrationObservation(
             current_schema=current_schema,
