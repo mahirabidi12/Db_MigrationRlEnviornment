@@ -26,7 +26,7 @@ TASK_DESCRIPTION = (
     "notifications tables. Preserve all data with referential integrity."
 )
 DIFFICULTY = "easy"
-MAX_STEPS = 80
+TIMEOUT_SECONDS = 1800  # 30 minutes
 
 INITIAL_SQL = """
 CREATE TABLE acme_users (

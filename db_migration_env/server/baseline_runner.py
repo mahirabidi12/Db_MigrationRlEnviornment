@@ -15,7 +15,7 @@ def _format_observation_prompt(obs) -> str:
     lines = []
     lines.append("=== DB Migration Task ===")
     lines.append(f"Task: {obs.task_description}")
-    lines.append(f"Step: {obs.step_count}/{obs.max_steps}")
+    lines.append(f"Step: {obs.step_count} | Time remaining: {obs.time_remaining:.0f}s")
     lines.append("")
 
     # Current schema
@@ -92,7 +92,7 @@ async def run_baseline() -> Dict[str, Any]:
             obs = env.reset(task_id=task_id)
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            for _ in range(task_def.max_steps):
+            for _ in range(500):
                 prompt = _format_observation_prompt(obs)
                 messages.append({"role": "user", "content": prompt})
 
@@ -135,7 +135,7 @@ def _run_heuristic_baseline() -> Dict[str, Any]:
         obs = env.reset(task_id=task_id)
 
         # The heuristic just tries to create missing tables and columns
-        for _ in range(task_def.max_steps):
+        for _ in range(500):
             if obs.done:
                 break
 

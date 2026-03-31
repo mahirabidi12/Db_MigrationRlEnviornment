@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Optional
 
@@ -43,6 +44,13 @@ class MigrationEnvironment:
         self._initial_schema: Optional[SchemaSnapshot] = None
         self._reward_state: Optional[RewardState] = None
         self._last_reward_breakdown: Optional[dict] = None
+        self._start_time: float = 0.0
+
+    def _time_remaining(self) -> float:
+        if not self.task:
+            return 0.0
+        elapsed = time.time() - self._start_time
+        return max(0.0, self.task.timeout_seconds - elapsed)
 
     # ------------------------------------------------------------------
     # reset
@@ -54,7 +62,6 @@ class MigrationEnvironment:
         seed: Optional[int] = None,
         episode_id: Optional[str] = None,
     ) -> MigrationObservation:
-        """Start a new episode. If task_id is None, defaults to easy."""
         if self.current_db:
             self.current_db.close()
         if self.target_db:
@@ -78,8 +85,8 @@ class MigrationEnvironment:
         self._sql_history = []
         self._last_reward_breakdown = None
         self._initial_schema = self.current_db.get_schema_snapshot(include_data_preview=False)
+        self._start_time = time.time()
 
-        # Initialize reward — runs grader once to get baseline score (0.0)
         self._reward_state = init_reward_state(
             current_db=self.current_db,
             target_db=self.target_db,
@@ -98,10 +105,17 @@ class MigrationEnvironment:
     # ------------------------------------------------------------------
 
     def step(self, action: MigrationAction) -> MigrationObservation:
-        """Execute one SQL action and return the observation."""
         if self._done:
             return self._build_observation(
                 last_result="Episode is done. Call reset() to start a new episode.",
+                last_error=True,
+            )
+
+        # Check timeout BEFORE executing
+        if self._time_remaining() <= 0:
+            self._done = True
+            return self._build_observation(
+                last_result="Timeout — 30 minutes exceeded.",
                 last_error=True,
             )
 
@@ -127,8 +141,8 @@ class MigrationEnvironment:
         self._cumulative_reward += step_reward
         self._last_reward_breakdown = breakdown.to_dict()
 
-        # Check termination
-        if self._step_count >= self.task.max_steps:
+        # Check termination: timeout or perfect score
+        if self._time_remaining() <= 0:
             self._done = True
         elif self._reward_state.prev_score >= 0.99:
             self._done = True
@@ -151,7 +165,8 @@ class MigrationEnvironment:
             episode_id=self._episode_id,
             task_id=self.task.task_id if self.task else "",
             step_count=self._step_count,
-            max_steps=self.task.max_steps if self.task else 0,
+            timeout_seconds=self.task.timeout_seconds if self.task else 1800,
+            time_remaining=round(self._time_remaining(), 1),
             done=self._done,
             cumulative_reward=round(self._cumulative_reward, 4),
             current_schema=current_schema,
@@ -165,7 +180,6 @@ class MigrationEnvironment:
     # ------------------------------------------------------------------
 
     def grade(self) -> dict:
-        """Grade the current episode using the checklist grader."""
         if not self.current_db or not self.target_db or not self._target_schema:
             return {"error": "No active episode. Call reset() first.", "total_score": 0.0}
         result = self.grader.detailed_grade(
@@ -173,10 +187,12 @@ class MigrationEnvironment:
             target_db=self.target_db,
             target_schema=self._target_schema,
             steps_taken=self._step_count,
-            max_steps=self.task.max_steps if self.task else 1,
+            max_steps=0,
             error_count=self._error_count,
             initial_schema=self._initial_schema,
         )
+        result["time_remaining"] = round(self._time_remaining(), 1)
+        result["timeout_seconds"] = self.task.timeout_seconds if self.task else 1800
         if self._last_reward_breakdown:
             result["last_reward_breakdown"] = self._last_reward_breakdown
         return result
@@ -199,6 +215,7 @@ class MigrationEnvironment:
             "episode_id": self._episode_id,
             "cumulative_reward": round(self._cumulative_reward, 4),
             "error_count": self._error_count,
+            "time_remaining": round(self._time_remaining(), 1),
         }
         if self._last_reward_breakdown:
             metadata["reward_breakdown"] = self._last_reward_breakdown
@@ -210,7 +227,8 @@ class MigrationEnvironment:
             last_sql_result=last_result,
             last_sql_error=last_error,
             step_count=self._step_count,
-            max_steps=self.task.max_steps if self.task else 0,
+            timeout_seconds=self.task.timeout_seconds if self.task else 1800,
+            time_remaining=round(self._time_remaining(), 1),
             task_id=self.task.task_id if self.task else "",
             task_description=self.task.description if self.task else "",
             reward=reward,

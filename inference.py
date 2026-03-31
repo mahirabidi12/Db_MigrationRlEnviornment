@@ -78,7 +78,7 @@ If the migration is complete (all differences resolved, data matches), reply: DO
 
 def format_observation(obs: MigrationObservation, include_data_sample: bool = True) -> str:
     lines = []
-    lines.append(f"=== Task: {obs.task_id} | Step {obs.step_count}/{obs.max_steps} ===")
+    lines.append(f"=== Task: {obs.task_id} | Step {obs.step_count} | Time remaining: {obs.time_remaining:.0f}s ===")
     lines.append(f"Description: {obs.task_description}")
     lines.append("")
 
@@ -181,10 +181,9 @@ def run_task(task_id: str, client: OpenAI) -> dict:
     print(f"\n{'='*60}")
     print(f"Task: {task_id} ({task.difficulty})")
     print(f"Description: {task.description}")
-    print(f"Max steps: {task.max_steps}")
+    print(f"Timeout: {task.timeout_seconds}s ({task.timeout_seconds//60}min)")
     print(f"{'='*60}")
 
-    # Build a planning prompt first
     planning_prompt = format_observation(obs)
 
     messages = [
@@ -192,9 +191,14 @@ def run_task(task_id: str, client: OpenAI) -> dict:
         {"role": "user", "content": planning_prompt},
     ]
 
-    for step in range(1, obs.max_steps + 1):
+    step = 0
+    while True:
+        step += 1
         if obs.done:
             print("  Environment signalled done.")
+            break
+        if obs.time_remaining <= 0:
+            print("  TIMEOUT — 30 minutes exceeded.")
             break
 
         try:
@@ -257,7 +261,7 @@ def run_task(task_id: str, client: OpenAI) -> dict:
     print(f"  Schema:     {grade['schema_score']}")
     print(f"  Data:       {grade['data_score']}")
     print(f"  Efficiency: {grade['efficiency_score']}")
-    print(f"  Steps:      {grade['steps_taken']}/{grade['max_steps']}")
+    print(f"  Steps:      {grade['steps_taken']}")
     print(f"  Errors:     {grade['error_count']}")
 
     return grade

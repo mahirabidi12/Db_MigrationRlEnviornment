@@ -13,7 +13,7 @@ class TaskDefinition:
     task_id: str
     description: str
     difficulty: str
-    max_steps: int
+    timeout_seconds: int
     initial_sql: str
     target_sql: str
 
@@ -23,7 +23,7 @@ def _load(mod) -> TaskDefinition:
         task_id=mod.TASK_ID,
         description=mod.TASK_DESCRIPTION,
         difficulty=mod.DIFFICULTY,
-        max_steps=mod.MAX_STEPS,
+        timeout_seconds=mod.TIMEOUT_SECONDS,
         initial_sql=mod.INITIAL_SQL,
         target_sql=mod.TARGET_SQL,
     )
@@ -32,7 +32,7 @@ def _load(mod) -> TaskDefinition:
 TASK_REGISTRY: Dict[str, TaskDefinition] = {
     task_easy.TASK_ID: _load(task_easy),
     task_medium.TASK_ID: _load(task_medium),
-    task_hard.TASK_ID: _load(task_hard),  # hard_ecommerce_acquisition
+    task_hard.TASK_ID: _load(task_hard),
 }
 
 
@@ -48,7 +48,7 @@ def list_tasks() -> List[Dict]:
             "task_id": t.task_id,
             "description": t.description,
             "difficulty": t.difficulty,
-            "max_steps": t.max_steps,
+            "timeout_seconds": t.timeout_seconds,
         }
         for t in TASK_REGISTRY.values()
     ]
