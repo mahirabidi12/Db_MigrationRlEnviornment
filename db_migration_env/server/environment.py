@@ -62,7 +62,7 @@ class MigrationEnvironment:
         if self.target_db:
             self.target_db.close()
 
-        task_id = task_id or "easy_blog_fix_fks"
+        task_id = task_id or "easy_blog_acquisition"
         self.task = get_task(task_id)
 
         # Set up current DB with initial state

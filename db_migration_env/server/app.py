@@ -167,8 +167,8 @@ async def tasks():
 
 
 @app.post("/grader")
-async def grader():
-    env = _get_env()
+async def grader(session_id: Optional[str] = "default"):
+    env = _get_env(session_id)
     return env.grade()
 
 
