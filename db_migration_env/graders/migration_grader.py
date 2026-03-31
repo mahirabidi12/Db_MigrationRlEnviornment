@@ -1,33 +1,63 @@
-"""Deterministic grader for DB migration tasks.
+"""Checklist-based grader for DB migration tasks.
 
-Produces a score 0.0-1.0 across FOUR dimensions. Designed so that the
-initial (unmigrated) state scores exactly 0.0 on all dimensions.
+Every check is worth exactly 1 point. No weights, no dimensions.
+Score = checks_passed / total_checks (0.0 to 1.0).
 
-  1. Schema Correctness (30%)  — target tables/columns/types/FKs/defaults present
-  2. Data Correctness (35%)    — row-level content matching with numeric tolerance
-  3. Referential Integrity (20%) — FK constraints satisfied (no orphan rows)
-  4. Efficiency (15%)          — step economy + error avoidance
-
-All dimensions return 0.0 before the agent takes any meaningful action.
+12 check types:
+  1.  table_exists           — target table is present
+  2.  column_exists          — target column is present in the table
+  3.  column_type_correct    — column has correct type
+  4.  column_nullable_correct — NOT NULL flag matches
+  5.  column_primary_key_correct — PK flag matches
+  6.  column_default_correct — DEFAULT value matches
+  7.  fk_exists              — target FK (col + ref_table + ref_col) is present
+  8.  index_exists           — target index (col + unique flag) is present
+  9.  table_removed          — old/legacy table is gone
+  10. column_removed         — old column no longer exists in restructured table
+  11. fk_removed             — old FK no longer exists
+  12. data_row_correct       — target row exists in current DB (row-level match)
 """
 
 from __future__ import annotations
 
+from typing import Dict, List, Optional
+
 from db_migration_env.db_engine import (
     DatabaseEngine,
-    compute_data_score,
-    compute_schema_score,
+    _normalize_type,
+    _normalize_default,
+    _normalize_value,
 )
 from db_migration_env.models import SchemaSnapshot
 
 
-class MigrationGrader:
-    """Grades a completed migration episode."""
+class CheckResult:
+    """One grader check."""
 
-    SCHEMA_WEIGHT = 0.40
-    DATA_WEIGHT = 0.40
-    INTEGRITY_WEIGHT = 0.10
-    EFFICIENCY_WEIGHT = 0.10
+    def __init__(self, check_type: str, table: str, detail: str, passed: bool, target: str = "", actual: str = ""):
+        self.check_type = check_type
+        self.table = table
+        self.detail = detail
+        self.passed = passed
+        self.target = target  # what was expected
+        self.actual = actual  # what was found
+
+    def to_dict(self) -> dict:
+        d = {
+            "check_type": self.check_type,
+            "table": self.table,
+            "detail": self.detail,
+            "passed": self.passed,
+        }
+        if self.target:
+            d["expected"] = self.target
+        if self.actual:
+            d["actual"] = self.actual
+        return d
+
+
+class MigrationGrader:
+    """Checklist-based grader. Score = passed / total. No weights."""
 
     def grade(
         self,
@@ -37,10 +67,12 @@ class MigrationGrader:
         steps_taken: int,
         max_steps: int,
         error_count: int,
+        initial_schema: Optional[SchemaSnapshot] = None,
     ) -> float:
         return self.detailed_grade(
             current_db, target_db, target_schema,
             steps_taken, max_steps, error_count,
+            initial_schema,
         )["total_score"]
 
     def detailed_grade(
@@ -51,104 +83,249 @@ class MigrationGrader:
         steps_taken: int,
         max_steps: int,
         error_count: int,
+        initial_schema: Optional[SchemaSnapshot] = None,
     ) -> dict:
+        checks: List[CheckResult] = []
+        current_schema = current_db.get_schema_snapshot(include_data_preview=False)
+        current_tables = {t.name: t for t in current_schema.tables}
+        target_tables = {t.name: t for t in target_schema.tables}
 
-        # 1. Schema correctness
-        schema_score = compute_schema_score(
-            current_db.get_schema_snapshot(include_data_preview=False),
-            target_schema,
-        )
+        # Also build initial tables map for "removed" checks
+        initial_tables = {}
+        if initial_schema:
+            initial_tables = {t.name: t for t in initial_schema.tables}
 
-        # 2. Data correctness
-        data_score = compute_data_score(current_db, target_db, target_schema)
+        # ── 1. table_exists — target table is present ──────────────────
+        for tname in target_tables:
+            checks.append(CheckResult(
+                check_type="table_exists",
+                table=tname,
+                detail=f"Table '{tname}' exists",
+                passed=tname in current_tables,
+                target="exists",
+                actual="exists" if tname in current_tables else "missing",
+            ))
 
-        # 3. Referential integrity
-        #    Score = (target FKs that are correctly built AND have no orphans)
-        #            / (total target FKs)
-        #    If target has FKs but current DB has none → 0.0 (not built yet)
-        #    If target has no FKs → based on schema match (no FK requirement)
-        target_fk_count = sum(len(t.foreign_keys) for t in target_schema.tables)
-
-        if target_fk_count == 0:
-            # No FKs required by target — integrity is not applicable, full marks
-            integrity_score = 1.0
-        else:
-            # Count how many of the TARGET's FK definitions exist in current DB
-            # AND have zero orphan violations
-            current_schema = current_db.get_schema_snapshot(include_data_preview=False)
-            current_tables = {t.name: t for t in current_schema.tables}
-
-            fks_correct = 0
-            for ttable in target_schema.tables:
+        # For each target table that exists in current DB, check columns/FKs
+        for tname, ttable in target_tables.items():
+            if tname not in current_tables:
+                # Table missing — all its column/FK checks auto-fail
+                for tcol in ttable.columns:
+                    checks.append(CheckResult("column_exists", tname, f"Column '{tcol.name}'", False, "exists", "table missing"))
+                    checks.append(CheckResult("column_type_correct", tname, f"Column '{tcol.name}' type", False, tcol.type, "table missing"))
+                    if tcol.notnull:
+                        checks.append(CheckResult("column_nullable_correct", tname, f"Column '{tcol.name}' NOT NULL", False, "NOT NULL", "table missing"))
+                    if tcol.is_pk:
+                        checks.append(CheckResult("column_primary_key_correct", tname, f"Column '{tcol.name}' PRIMARY KEY", False, "PK", "table missing"))
+                    if tcol.default_value is not None:
+                        checks.append(CheckResult("column_default_correct", tname, f"Column '{tcol.name}' DEFAULT", False, str(tcol.default_value), "table missing"))
                 for tfk in ttable.foreign_keys:
-                    # Check 1: Does the table exist in current DB?
-                    if ttable.name not in current_tables:
-                        continue  # Table doesn't exist yet → this FK is not built
-                    ctable = current_tables[ttable.name]
+                    checks.append(CheckResult("fk_exists", tname, f"FK {tfk.from_column}→{tfk.to_table}({tfk.to_column})", False, "exists", "table missing"))
+                continue
 
-                    # Check 2: Does the FK definition exist?
-                    cfk_set = {
-                        (fk.from_column, fk.to_table, fk.to_column)
-                        for fk in ctable.foreign_keys
-                    }
-                    if (tfk.from_column, tfk.to_table, tfk.to_column) not in cfk_set:
-                        continue  # FK definition missing
+            ctable = current_tables[tname]
+            ccols = {c.name: c for c in ctable.columns}
+            tcols = {c.name: c for c in ttable.columns}
 
-                    # Check 3: Are there orphan rows? (FK exists but data violates it)
-                    try:
-                        cur = current_db.conn.execute(
-                            f'SELECT COUNT(*) FROM "{ttable.name}" '
-                            f'WHERE "{tfk.from_column}" IS NOT NULL '
-                            f'AND "{tfk.from_column}" NOT IN '
-                            f'(SELECT "{tfk.to_column}" FROM "{tfk.to_table}")'
-                        )
-                        orphans = cur.fetchone()[0]
-                        if orphans == 0:
-                            fks_correct += 1
-                        # else: FK exists but has violations → not counted
-                    except Exception:
-                        pass  # Query failed → not counted
+            # ── 2. column_exists ───────────────────────────────────────
+            for cname, tcol in tcols.items():
+                exists = cname in ccols
+                checks.append(CheckResult(
+                    "column_exists", tname, f"Column '{cname}'",
+                    passed=exists,
+                    target="exists",
+                    actual="exists" if exists else "missing",
+                ))
 
-            integrity_score = fks_correct / target_fk_count
+                if not exists:
+                    # Column missing — type/constraint checks auto-fail
+                    checks.append(CheckResult("column_type_correct", tname, f"Column '{cname}' type", False, tcol.type, "column missing"))
+                    if tcol.notnull:
+                        checks.append(CheckResult("column_nullable_correct", tname, f"Column '{cname}' NOT NULL", False, "NOT NULL", "column missing"))
+                    if tcol.is_pk:
+                        checks.append(CheckResult("column_primary_key_correct", tname, f"Column '{cname}' PRIMARY KEY", False, "PK", "column missing"))
+                    if tcol.default_value is not None:
+                        checks.append(CheckResult("column_default_correct", tname, f"Column '{cname}' DEFAULT", False, str(tcol.default_value), "column missing"))
+                    continue
 
-        # 4. Efficiency
-        #    0 steps taken = 0.0 (haven't started, not "efficient")
-        #    Completed in fewer steps = higher score
-        if steps_taken == 0:
-            efficiency_score = 0.0
-        elif max_steps > 0:
-            step_ratio = steps_taken / max_steps
-            efficiency = max(0.0, 1.0 - step_ratio)
-            error_penalty = min(1.0, error_count * 0.05)
-            efficiency_score = max(0.0, efficiency - error_penalty)
-        else:
-            efficiency_score = 0.0
+                ccol = ccols[cname]
 
-        # FK violation details for the report
-        fk_violations = current_db.check_referential_integrity()
+                # ── 3. column_type_correct ─────────────────────────────
+                type_match = _normalize_type(ccol.type) == _normalize_type(tcol.type)
+                checks.append(CheckResult(
+                    "column_type_correct", tname, f"Column '{cname}' type",
+                    passed=type_match,
+                    target=tcol.type,
+                    actual=ccol.type,
+                ))
 
-        total = (
-            self.SCHEMA_WEIGHT * schema_score
-            + self.DATA_WEIGHT * data_score
-            + self.INTEGRITY_WEIGHT * integrity_score
-            + self.EFFICIENCY_WEIGHT * efficiency_score
-        )
-        total = round(max(0.0, min(1.0, total)), 4)
+                # ── 4. column_nullable_correct ─────────────────────────
+                if tcol.notnull:
+                    checks.append(CheckResult(
+                        "column_nullable_correct", tname, f"Column '{cname}' NOT NULL",
+                        passed=ccol.notnull == tcol.notnull,
+                        target="NOT NULL" if tcol.notnull else "NULLABLE",
+                        actual="NOT NULL" if ccol.notnull else "NULLABLE",
+                    ))
+
+                # ── 5. column_primary_key_correct ──────────────────────
+                if tcol.is_pk:
+                    checks.append(CheckResult(
+                        "column_primary_key_correct", tname, f"Column '{cname}' PRIMARY KEY",
+                        passed=ccol.is_pk,
+                        target="PK",
+                        actual="PK" if ccol.is_pk else "not PK",
+                    ))
+
+                # ── 6. column_default_correct ──────────────────────────
+                if tcol.default_value is not None:
+                    default_match = _normalize_default(ccol.default_value) == _normalize_default(tcol.default_value)
+                    checks.append(CheckResult(
+                        "column_default_correct", tname, f"Column '{cname}' DEFAULT",
+                        passed=default_match,
+                        target=str(tcol.default_value),
+                        actual=str(ccol.default_value) if ccol.default_value is not None else "none",
+                    ))
+
+            # ── 7. fk_exists ───────────────────────────────────────────
+            cfk_set = {
+                (fk.from_column, fk.to_table, fk.to_column)
+                for fk in ctable.foreign_keys
+            }
+            for tfk in ttable.foreign_keys:
+                fk_key = (tfk.from_column, tfk.to_table, tfk.to_column)
+                checks.append(CheckResult(
+                    "fk_exists", tname,
+                    f"FK {tfk.from_column}→{tfk.to_table}({tfk.to_column})",
+                    passed=fk_key in cfk_set,
+                    target="exists",
+                    actual="exists" if fk_key in cfk_set else "missing",
+                ))
+
+            # ── 8. index_exists ────────────────────────────────────────
+            cidx_set = {
+                (tuple(idx.columns), idx.unique)
+                for idx in ctable.indexes
+            }
+            for tidx in ttable.indexes:
+                idx_key = (tuple(tidx.columns), tidx.unique)
+                checks.append(CheckResult(
+                    "index_exists", tname,
+                    f"Index on ({','.join(tidx.columns)}) unique={tidx.unique}",
+                    passed=idx_key in cidx_set,
+                    target="exists",
+                    actual="exists" if idx_key in cidx_set else "missing",
+                ))
+
+            # ── 10. column_removed — old columns no longer in restructured table ──
+            # If this table existed in initial with extra columns not in target
+            if tname in initial_tables:
+                init_cols = {c.name for c in initial_tables[tname].columns}
+                target_cols = {c.name for c in ttable.columns}
+                cols_to_remove = init_cols - target_cols
+                for col_name in cols_to_remove:
+                    checks.append(CheckResult(
+                        "column_removed", tname,
+                        f"Old column '{col_name}' removed",
+                        passed=col_name not in ccols,
+                        target="removed",
+                        actual="removed" if col_name not in ccols else "still exists",
+                    ))
+
+            # ── 11. fk_removed — old FKs no longer exist ──────────────
+            if tname in initial_tables:
+                init_fks = {
+                    (fk.from_column, fk.to_table, fk.to_column)
+                    for fk in initial_tables[tname].foreign_keys
+                }
+                target_fks = {
+                    (fk.from_column, fk.to_table, fk.to_column)
+                    for fk in ttable.foreign_keys
+                }
+                fks_to_remove = init_fks - target_fks
+                for fk in fks_to_remove:
+                    checks.append(CheckResult(
+                        "fk_removed", tname,
+                        f"Old FK {fk[0]}→{fk[1]}({fk[2]}) removed",
+                        passed=fk not in cfk_set,
+                        target="removed",
+                        actual="removed" if fk not in cfk_set else "still exists",
+                    ))
+
+        # ── 9. table_removed — old/legacy tables are gone ─────────────
+        if initial_schema:
+            tables_to_drop = set(initial_tables.keys()) - set(target_tables.keys())
+            for tname in tables_to_drop:
+                checks.append(CheckResult(
+                    "table_removed", tname,
+                    f"Legacy table '{tname}' removed",
+                    passed=tname not in current_tables,
+                    target="removed",
+                    actual="removed" if tname not in current_tables else "still exists",
+                ))
+
+        # ── 12. data_row_correct — target rows exist in current DB ────
+        for ttable in target_schema.tables:
+            tname = ttable.name
+            target_data = target_db.get_table_data(tname)
+            current_data = current_db.get_table_data(tname)
+
+            if not target_data:
+                continue
+
+            target_cols = [c.name for c in ttable.columns]
+
+            # Build multiset of current rows
+            c_multiset: Dict[tuple, int] = {}
+            for row in current_data:
+                key = tuple(_normalize_value(row.get(c)) for c in target_cols)
+                c_multiset[key] = c_multiset.get(key, 0) + 1
+
+            # Check each target row
+            for i, row in enumerate(target_data):
+                key = tuple(_normalize_value(row.get(c)) for c in target_cols)
+                found = c_multiset.get(key, 0) > 0
+                if found:
+                    c_multiset[key] -= 1
+
+                # Build a short preview of the row for the detail
+                preview_vals = [str(row.get(c, ""))[:15] for c in target_cols[:4]]
+                preview = " | ".join(preview_vals)
+
+                checks.append(CheckResult(
+                    "data_row_correct", tname,
+                    f"Row {i+1}: {preview}...",
+                    passed=found,
+                    target="present",
+                    actual="present" if found else "missing",
+                ))
+
+        # ── Compute score ─────────────────────────────────────────────
+        total_checks = len(checks)
+        passed_checks = sum(1 for c in checks if c.passed)
+        score = passed_checks / total_checks if total_checks > 0 else 0.0
+
+        # Build summary by check type
+        summary: Dict[str, Dict[str, int]] = {}
+        for c in checks:
+            if c.check_type not in summary:
+                summary[c.check_type] = {"total": 0, "passed": 0, "failed": 0}
+            summary[c.check_type]["total"] += 1
+            if c.passed:
+                summary[c.check_type]["passed"] += 1
+            else:
+                summary[c.check_type]["failed"] += 1
+
+        # Failed checks detail (for debugging)
+        failed = [c.to_dict() for c in checks if not c.passed]
 
         return {
-            "total_score": total,
-            "schema_score": round(schema_score, 4),
-            "data_score": round(data_score, 4),
-            "integrity_score": round(integrity_score, 4),
-            "efficiency_score": round(efficiency_score, 4),
+            "total_score": round(score, 4),
+            "checks_passed": passed_checks,
+            "checks_total": total_checks,
+            "summary": summary,
+            "failed_checks": failed[:50],  # Cap at 50 to avoid huge responses
             "steps_taken": steps_taken,
             "max_steps": max_steps,
             "error_count": error_count,
-            "fk_violations": fk_violations,
-            "weights": {
-                "schema": self.SCHEMA_WEIGHT,
-                "data": self.DATA_WEIGHT,
-                "integrity": self.INTEGRITY_WEIGHT,
-                "efficiency": self.EFFICIENCY_WEIGHT,
-            },
         }
