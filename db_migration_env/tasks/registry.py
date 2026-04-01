@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List
 
-from db_migration_env.tasks import task_easy, task_medium, task_hard
+from db_migration_env.tasks import task_easy, task_medium, task_hard, task_hard_marketplace
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,7 @@ TASK_REGISTRY: Dict[str, TaskDefinition] = {
     task_easy.TASK_ID: _load(task_easy),
     task_medium.TASK_ID: _load(task_medium),
     task_hard.TASK_ID: _load(task_hard),
+    task_hard_marketplace.TASK_ID: _load(task_hard_marketplace),
 }
 
 
