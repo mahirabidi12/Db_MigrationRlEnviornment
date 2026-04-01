@@ -44,16 +44,51 @@ class CheckResult:
 
     def to_dict(self) -> dict:
         d = {
+            "name": f"{self.check_type}: {self.table}.{self.detail}",
             "check_type": self.check_type,
             "table": self.table,
             "detail": self.detail,
+            "score": 1.0 if self.passed else 0.0,
             "passed": self.passed,
+            "expected": self.target or "",
+            "actual": self.actual or "",
         }
-        if self.target:
-            d["expected"] = self.target
-        if self.actual:
-            d["actual"] = self.actual
+        if not self.passed:
+            d["reason"] = self._failure_reason()
         return d
+
+    def _failure_reason(self) -> str:
+        """Human-readable explanation of why this check failed."""
+        # Extract column name from detail like "Column 'email'" or "Column 'email' type"
+        col = self.detail.split("'")[1] if "'" in self.detail else ""
+
+        if self.check_type == "table_exists":
+            return f"Table '{self.table}' does not exist. Run: CREATE TABLE {self.table} (...)"
+        elif self.check_type == "column_exists":
+            return f"Column '{self.table}.{col}' is missing. Expected column '{col}' in table '{self.table}'."
+        elif self.check_type == "column_type_correct":
+            return f"Wrong type for '{self.table}.{col}'. Expected {self.target}, got {self.actual}."
+        elif self.check_type == "column_nullable_correct":
+            return f"Wrong constraint for '{self.table}.{col}'. Expected {self.target}, got {self.actual}."
+        elif self.check_type == "column_primary_key_correct":
+            return f"'{self.table}.{col}' should be PRIMARY KEY but is not."
+        elif self.check_type == "column_default_correct":
+            return f"Wrong default for '{self.table}.{col}'. Expected DEFAULT {self.target}, got DEFAULT {self.actual}."
+        elif self.check_type == "fk_exists":
+            return f"Missing FK on '{self.table}': {self.detail}. Need FOREIGN KEY constraint."
+        elif self.check_type == "index_exists":
+            return f"Missing index on '{self.table}': {self.detail}."
+        elif self.check_type == "table_removed":
+            return f"Legacy table '{self.table}' still exists. Run: DROP TABLE {self.table}"
+        elif self.check_type == "column_removed":
+            return f"Old column '{self.table}.{col}' still exists. Must be removed (recreate table in SQLite)."
+        elif self.check_type == "fk_removed":
+            return f"Old FK on '{self.table}' still exists: {self.detail}. Must be removed."
+        elif self.check_type == "index_removed":
+            return f"Old index on '{self.table}' still exists: {self.detail}."
+        elif self.check_type == "data_row_correct":
+            return f"Expected row missing in '{self.table}': {self.detail}. Data not migrated correctly."
+        return f"Check failed on '{self.table}': expected={self.target}, actual={self.actual}"
 
 
 class MigrationGrader:
@@ -316,15 +351,40 @@ class MigrationGrader:
             else:
                 summary[c.check_type]["failed"] += 1
 
-        # Failed checks detail (for debugging)
+        # Failed checks detail — every single one, no cap
         failed = [c.to_dict() for c in checks if not c.passed]
+        all_checks = [c.to_dict() for c in checks]
+
+        # ── Evaluation results — every individual check ────────────────
+        # Same format as OpenEnv standard: name, score (0/1), passed
+        # Every single check is its own evaluation result entry
+        evaluation_results = []
+        for c in checks:
+            entry = {
+                "name": c.to_dict()["name"],
+                "score": 1 if c.passed else 0,
+                "passed": c.passed,
+            }
+            if not c.passed:
+                entry["reason"] = c._failure_reason()
+            evaluation_results.append(entry)
+
+        eval_passed = sum(1 for e in evaluation_results if e["passed"])
+        eval_total = len(evaluation_results)
 
         return {
+            "reward": round(score, 4),
+            "metadata": {
+                "evaluation_results": evaluation_results,
+                "total_evaluations": eval_total,
+                "passed_evaluations": eval_passed,
+                "average_score": round(score, 4),
+            },
             "total_score": round(score, 4),
             "checks_passed": passed_checks,
             "checks_total": total_checks,
             "summary": summary,
-            "failed_checks": failed[:50],  # Cap at 50 to avoid huge responses
+            "failed_checks": failed,
             "steps_taken": steps_taken,
             "max_steps": max_steps,
             "error_count": error_count,
