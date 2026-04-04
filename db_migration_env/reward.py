@@ -262,12 +262,12 @@ def compute_step_reward(
     if not success:
         penalty += PENALTIES["sql_error"]
 
-    # Build details
+    # Build details — only report NEW issues this step
     parts = []
     if new_mistakes > 0:
         parts.append(f"{new_mistakes} new mistake(s): {mistake_details}")
-    if wrong_data > 0:
-        parts.append(f"{wrong_data} wrong data row(s)")
+    if new_wrong_data > 0:
+        parts.append(f"{new_wrong_data} new wrong data row(s)")
     if not success:
         parts.append("SQL error")
 

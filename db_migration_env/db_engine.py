@@ -31,8 +31,8 @@ class DatabaseEngine:
     # ------------------------------------------------------------------
 
     def execute(self, sql: str) -> Tuple[bool, str]:
-        """Execute a SQL statement. Returns (success, result_string)."""
-        sql = sql.strip().rstrip(";")
+        """Execute one or more SQL statements. Returns (success, result_string)."""
+        sql = sql.strip()
         if not sql:
             return False, "Empty SQL statement."
 
@@ -41,27 +41,39 @@ class DatabaseEngine:
         if any(kw in upper for kw in ["ATTACH", "DETACH", "LOAD_EXTENSION", ".READ", ".IMPORT"]):
             return False, "SQL Error: Operation not permitted in this environment."
 
-        try:
-            cursor = self.conn.execute(sql)
-            self.conn.commit()
-            upper = sql.upper().lstrip()
-            if upper.startswith("SELECT") or upper.startswith("PRAGMA") or upper.startswith("WITH"):
-                rows = cursor.fetchall()
-                if not rows:
-                    return True, "Query returned 0 rows."
-                cols = [d[0] for d in cursor.description]
-                lines = [" | ".join(cols)]
-                lines.append("-" * len(lines[0]))
-                for row in rows[:100]:  # cap display
-                    lines.append(" | ".join(str(v) for v in row))
-                if len(rows) > 100:
-                    lines.append(f"... ({len(rows)} rows total)")
-                return True, "\n".join(lines)
-            else:
-                return True, f"OK. Rows affected: {cursor.rowcount}"
-        except Exception as e:
-            self.conn.rollback()
-            return False, f"SQL Error: {e}"
+        # Split into individual statements
+        statements = [s.strip() for s in sql.split(";") if s.strip()]
+        if not statements:
+            return False, "Empty SQL statement."
+
+        results = []
+        all_success = True
+        for stmt in statements:
+            try:
+                cursor = self.conn.execute(stmt)
+                self.conn.commit()
+                stmt_upper = stmt.upper().lstrip()
+                if stmt_upper.startswith("SELECT") or stmt_upper.startswith("PRAGMA") or stmt_upper.startswith("WITH"):
+                    rows = cursor.fetchall()
+                    if not rows:
+                        results.append("Query returned 0 rows.")
+                    else:
+                        cols = [d[0] for d in cursor.description]
+                        lines = [" | ".join(cols)]
+                        lines.append("-" * len(lines[0]))
+                        for row in rows[:100]:
+                            lines.append(" | ".join(str(v) for v in row))
+                        if len(rows) > 100:
+                            lines.append(f"... ({len(rows)} rows total)")
+                        results.append("\n".join(lines))
+                else:
+                    results.append(f"OK. Rows affected: {cursor.rowcount}")
+            except Exception as e:
+                self.conn.rollback()
+                results.append(f"SQL Error: {e}")
+                all_success = False
+
+        return all_success, " | ".join(results)
 
     def execute_script(self, script: str) -> None:
         """Execute multiple SQL statements (for setup). Raises on error."""
