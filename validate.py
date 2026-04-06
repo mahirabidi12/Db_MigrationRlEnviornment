@@ -145,7 +145,7 @@ def main():
     # 6. Reward is not always the same
     print("\n--- Reward Variability ---")
     env = MigrationEnvironment()
-    obs = env.reset(task_id="easy_blog_acquisition")
+    obs = env.reset(task_id="easy_hospital_migration")
     rewards = []
     test_sqls = [
         "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, full_name TEXT NOT NULL, created_at TEXT NOT NULL)",

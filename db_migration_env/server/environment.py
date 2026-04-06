@@ -67,7 +67,7 @@ class MigrationEnvironment:
         if self.target_db:
             self.target_db.close()
 
-        task_id = task_id or "easy_blog_acquisition"
+        task_id = task_id or "easy_hospital_migration"
         self.task = get_task(task_id)
 
         self.current_db = DatabaseEngine()
@@ -94,6 +94,7 @@ class MigrationEnvironment:
             initial_schema=self._initial_schema,
             grader=self.grader,
         )
+        self._initial_grader_score = self._reward_state.prev_score
 
         return self._build_observation(
             last_result="Episode started. Execute SQL to migrate the database.",
@@ -191,6 +192,7 @@ class MigrationEnvironment:
             error_count=self._error_count,
             initial_schema=self._initial_schema,
         )
+        result["initial_score"] = self._initial_grader_score
         result["time_remaining"] = round(self._time_remaining(), 1)
         result["timeout_seconds"] = self.task.timeout_seconds if self.task else 1800
         if self._last_reward_breakdown:

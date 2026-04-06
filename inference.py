@@ -99,10 +99,11 @@ If the migration is complete (all differences resolved, data matches), reply: DO
 # Build context-rich observation prompt
 # ---------------------------------------------------------------------------
 
-def format_observation(obs: MigrationObservation, include_data_sample: bool = True) -> str:
+def format_observation(obs: MigrationObservation, include_data_sample: bool = True, include_description: bool = True) -> str:
     lines = []
     lines.append(f"=== Task: {obs.task_id} | Step {obs.step_count} | Time remaining: {obs.time_remaining:.0f}s ===")
-    lines.append(f"Description: {obs.task_description}")
+    if include_description:
+        lines.append(f"Description: {obs.task_description}")
     lines.append("")
 
     for label, schema in [("CURRENT DATABASE", obs.current_schema), ("TARGET DATABASE", obs.target_schema)]:
@@ -281,8 +282,8 @@ def run_task(task_id: str, client: OpenAI) -> dict:
                 error=error_str,
             )
 
-            # Build follow-up prompt with result
-            result_prompt = format_observation(obs)
+            # Build follow-up prompt with result (skip description after first turn)
+            result_prompt = format_observation(obs, include_description=False)
             messages.append({"role": "user", "content": result_prompt})
 
             # Context window management — keep system + last N exchanges
