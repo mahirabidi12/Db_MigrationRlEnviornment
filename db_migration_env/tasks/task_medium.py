@@ -1,3 +1,14 @@
+"""Task (Medium): Facebook → Instagram-style Unified Schema Migration — Narrative Mode.
+
+Meta (parent company of Facebook) is consolidating its social platform.
+Facebook's legacy database must be migrated into a new unified Instagram-style
+schema. All Facebook users, their content, interactions, and relationships
+need to move to the new normalized schema.
+
+Initial: 25 tables (fb_ prefix), ~300 rows
+Target:  44 tables (no prefix), ~450 rows
+"""
+
 TASK_ID = "medium_instagram_migration"
 
 TASK_DESCRIPTION = """
@@ -175,7 +186,7 @@ The event_attendees table migrates 15 rows from fb_event_rsvps. Each row has id 
 ────────────────────────────────────────────────────────────────
  Table 33 / 44 : event_posts
 ────────────────────────────────────────────────────────────────
-The event_posts table is new, containing 6 rows. Each row has id INTEGER PRIMARY KEY, event_id INTEGER NOT NULL REFERENCES events(id), author_id INTEGER NOT NULL REFERENCES accounts(id), content TEXT NOT NULL, media_url TEXT, created_at TEXT NOT NULL.
+The event_posts table is new, containing 6 rows — one per event. The event creator posts an announcement for their own event. Each row has id INTEGER PRIMARY KEY assigned sequentially matching the event_id, event_id INTEGER NOT NULL REFERENCES events(id), author_id INTEGER NOT NULL REFERENCES accounts(id) set to the creator_id of that event, content TEXT NOT NULL which is a short announcement message from the host, media_url TEXT which is NULL for most but may include an image path like '/media/events/name_desc.jpg' for events 2 and 5, created_at TEXT NOT NULL matching the event's start_time date.
 
 ────────────────────────────────────────────────────────────────
  Table 34 / 44 : content_reports
@@ -185,7 +196,7 @@ The content_reports table migrates 6 rows from fb_reports. Each row has id INTEG
 ────────────────────────────────────────────────────────────────
  Table 35 / 44 : moderation_actions
 ────────────────────────────────────────────────────────────────
-The moderation_actions table is new, containing 6 rows, one per content report. Each row has id INTEGER PRIMARY KEY, report_id INTEGER NOT NULL REFERENCES content_reports(id), action_type TEXT NOT NULL DEFAULT 'review', action_by TEXT NOT NULL DEFAULT 'system', notes TEXT, created_at TEXT NOT NULL.
+The moderation_actions table is new, containing 6 rows, one per content report — every report gets an automatic moderation action. Each row has id INTEGER PRIMARY KEY matching the report id, report_id INTEGER NOT NULL REFERENCES content_reports(id) matching sequentially, action_type TEXT NOT NULL DEFAULT 'review' which is 'review' for all reports except report 5 where it is 'dismiss', action_by TEXT NOT NULL DEFAULT 'system' always set to 'system', notes TEXT describing the action taken (e.g. 'Content reviewed and flagged', 'Pending manual review', 'Content reviewed and removed', or 'Report dismissed after review' for dismissed ones), created_at TEXT NOT NULL set to one day after the content_report's created_at.
 
 ────────────────────────────────────────────────────────────────
  Table 36 / 44 : activity_log
@@ -200,37 +211,37 @@ The notification_preferences table is new, derived from fb_privacy_settings, con
 ────────────────────────────────────────────────────────────────
  Table 38 / 44 : notifications
 ────────────────────────────────────────────────────────────────
-The notifications table migrates 20 rows from fb_notifications. Each row has id INTEGER PRIMARY KEY from notifid, account_id INTEGER NOT NULL REFERENCES accounts(id) resolved by joining notif_user_email against accounts.email, notification_type TEXT NOT NULL from notif_type, title TEXT NOT NULL derived from notif_type, body TEXT from notif_text, is_read INTEGER NOT NULL DEFAULT 0 from notif_read, source_type TEXT from notif_type, source_id INTEGER from notif_source_id, created_at TEXT NOT NULL from notif_created.
+The notifications table migrates 20 rows from fb_notifications. Each row has id INTEGER PRIMARY KEY from notifid, account_id INTEGER NOT NULL REFERENCES accounts(id) resolved by joining notif_user_email against accounts.email, notification_type TEXT NOT NULL from notif_type, title TEXT NOT NULL mapped from notif_type using these rules: 'like' becomes 'New Like', 'comment' becomes 'New Comment', 'friend_request' becomes 'Follow Request', 'event' becomes 'Event Invite', 'group' becomes 'Community Update', 'page' becomes 'Creator Update'. The body TEXT is taken directly from notif_text, is_read INTEGER NOT NULL DEFAULT 0 from notif_read, source_type TEXT is the same as notif_type, source_id INTEGER from notif_source_id (NULL for friend_request notifications), created_at TEXT NOT NULL from notif_created.
 
 ────────────────────────────────────────────────────────────────
  Table 39 / 44 : account_stats
 ────────────────────────────────────────────────────────────────
-The account_stats table is a computed summary with 10 rows, one per account. Each row has id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id), post_count INTEGER NOT NULL DEFAULT 0 computed by counting media_posts for that account, follower_count INTEGER NOT NULL DEFAULT 0 computed by counting follow_relationships where the account is the following_id, following_count INTEGER NOT NULL DEFAULT 0 computed by counting follow_relationships where the account is the follower_id, total_likes_received INTEGER NOT NULL DEFAULT 0 computed by counting post_likes on the account's posts.
+The account_stats table is a computed summary with 10 rows, one per account. Each row has id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id). The post_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM media_posts WHERE author_id equals the account id — returns 0 for accounts with no posts. The follower_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM follow_relationships WHERE following_id equals the account id — this counts how many people follow this account. The following_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM follow_relationships WHERE follower_id equals the account id — this counts how many people this account follows. The total_likes_received INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_likes WHERE post_id is in the set of media_posts authored by this account — join post_likes to media_posts on post_id to group by author_id.
 
 ────────────────────────────────────────────────────────────────
  Table 40 / 44 : post_analytics
 ────────────────────────────────────────────────────────────────
-The post_analytics table is a computed summary with 20 rows, one per media post. Each row has id INTEGER PRIMARY KEY, post_id INTEGER NOT NULL REFERENCES media_posts(id), like_count INTEGER NOT NULL DEFAULT 0 computed by counting post_likes, comment_count INTEGER NOT NULL DEFAULT 0 computed by counting post_comments, share_count INTEGER NOT NULL DEFAULT 0 computed by counting post_shares, save_count INTEGER NOT NULL DEFAULT 0 computed by counting saved_posts, view_count INTEGER NOT NULL DEFAULT 0 set to a reasonable estimate.
+The post_analytics table is a computed summary with 20 rows, one per media post. Each row has id INTEGER PRIMARY KEY matching the post_id, post_id INTEGER NOT NULL REFERENCES media_posts(id). The like_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_likes WHERE post_likes.post_id matches this post. The comment_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_comments WHERE post_comments.post_id matches this post (only direct comments, not replies to comments). The share_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_shares WHERE post_shares.original_post_id matches this post. The save_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM saved_posts WHERE saved_posts.post_id matches this post. The view_count INTEGER NOT NULL DEFAULT 0 is estimated as (like_count + comment_count) multiplied by 10, with a minimum of 10 for posts that have any likes or comments, and 0 for posts with no engagement at all — use CASE WHEN (like_count + comment_count) > 0 THEN (like_count + comment_count) * 10 ELSE 0 END.
 
 ────────────────────────────────────────────────────────────────
  Table 41 / 44 : engagement_daily
 ────────────────────────────────────────────────────────────────
-The engagement_daily table is a computed summary aggregated by date, containing 5 rows. Each row has id INTEGER PRIMARY KEY, summary_date TEXT NOT NULL, total_posts INTEGER NOT NULL DEFAULT 0 computed by counting media_posts created on that date, total_likes INTEGER NOT NULL DEFAULT 0 computed by counting post_likes on that date, total_comments INTEGER NOT NULL DEFAULT 0 computed by counting post_comments on that date, total_new_accounts INTEGER NOT NULL DEFAULT 0 computed by counting accounts created on that date.
+The engagement_daily table is a computed summary aggregated by month, containing 4 rows — one per distinct YYYY-MM month found in media_posts.created_at. Each row has id INTEGER PRIMARY KEY assigned sequentially by month order using ROW_NUMBER() OVER (ORDER BY month), summary_date TEXT NOT NULL which is the YYYY-MM string (e.g. '2024-01'), total_posts INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM media_posts WHERE SUBSTR(created_at,1,7) matches the month, total_likes INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_likes WHERE SUBSTR(created_at,1,7) matches the month, total_comments INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_comments WHERE SUBSTR(created_at,1,7) matches the month, total_new_accounts INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM accounts WHERE SUBSTR(created_at,1,7) matches the month — this will be 0 for all rows since all accounts were created before 2024.
 
 ────────────────────────────────────────────────────────────────
  Table 42 / 44 : hashtag_trends
 ────────────────────────────────────────────────────────────────
-The hashtag_trends table is a computed summary with 8 rows, one per hashtag. Each row has id INTEGER PRIMARY KEY, hashtag_id INTEGER NOT NULL REFERENCES hashtags(id), period TEXT NOT NULL, post_count INTEGER NOT NULL DEFAULT 0 computed by counting post_hashtags for that hashtag, engagement_score REAL NOT NULL DEFAULT 0.0 estimated from post counts.
+The hashtag_trends table is a computed summary with 8 rows, one per hashtag. Each row has id INTEGER PRIMARY KEY matching the hashtag id, hashtag_id INTEGER NOT NULL REFERENCES hashtags(id), period TEXT NOT NULL always set to '2024-Q1' for this migration, post_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM post_hashtags WHERE hashtag_id matches this hashtag, engagement_score REAL NOT NULL DEFAULT 0.0 is computed as post_count multiplied by 2.5 — use ROUND(post_count * 2.5, 1).
 
 ────────────────────────────────────────────────────────────────
  Table 43 / 44 : community_stats
 ────────────────────────────────────────────────────────────────
-The community_stats table is a computed summary with 6 rows, one per community. Each row has id INTEGER PRIMARY KEY, community_id INTEGER NOT NULL REFERENCES communities(id), total_posts INTEGER NOT NULL DEFAULT 0 computed by counting community_posts, total_members INTEGER NOT NULL DEFAULT 0 computed by counting community_members, active_members INTEGER NOT NULL DEFAULT 0 estimated from recent activity.
+The community_stats table is a computed summary with 6 rows, one per community. Each row has id INTEGER PRIMARY KEY matching the community id, community_id INTEGER NOT NULL REFERENCES communities(id), total_posts INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM community_posts WHERE community_id matches, total_members INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM community_members WHERE community_id matches, active_members INTEGER NOT NULL DEFAULT 0 is COUNT(DISTINCT author_id) FROM community_posts WHERE community_id matches — this counts only members who have actually posted.
 
 ────────────────────────────────────────────────────────────────
  Table 44 / 44 : migration_log
 ────────────────────────────────────────────────────────────────
-The migration_log table is new, containing 25 rows, one per legacy table migrated. Each row has id INTEGER PRIMARY KEY, source_table TEXT NOT NULL, target_table TEXT NOT NULL, rows_migrated INTEGER NOT NULL DEFAULT 0, migrated_at TEXT NOT NULL.
+The migration_log table is new, containing 25 rows — one entry per legacy-to-target table mapping. Each row has id INTEGER PRIMARY KEY assigned sequentially, source_table TEXT NOT NULL which is the fb_ table name, target_table TEXT NOT NULL which is the corresponding target table name, rows_migrated INTEGER NOT NULL DEFAULT 0 set to the actual row count inserted into the target table, migrated_at TEXT NOT NULL set to sequential timestamps starting from '2024-04-15 10:00:00' with one minute increments. The 25 mappings in order are: fb_users→accounts (10), fb_profiles→profiles (10), fb_privacy_settings→account_settings (10), fb_friendships→follow_relationships (15), fb_blocked_users→blocked_accounts (5), fb_users→account_verifications (10), fb_posts→media_posts (20), fb_comments→post_comments (25), fb_likes→post_likes (18), fb_likes→comment_likes (12), fb_saved_items→saved_posts (10), fb_albums→media_albums (8), fb_photos→album_media (8), fb_hashtags→hashtags (8), fb_post_hashtags→post_hashtags (15), fb_posts→post_mentions (6), fb_posts→post_shares (5), fb_posts→stories (5), fb_groups→communities (6), fb_group_members→community_members (18), fb_group_posts→community_posts (12), fb_pages→creator_accounts (5), fb_page_followers→creator_followers (12), fb_conversations→dm_threads (8), fb_messages→dm_messages (20).
 
 ────────────────────────────────────────────────────────────────
  Legacy Cleanup
@@ -241,7 +252,7 @@ Drop all 25 fb_ tables: fb_users, fb_profiles, fb_friendships, fb_posts, fb_comm
 
 DIFFICULTY = "medium"
 
-TIMEOUT_SECONDS = 360  # 6 minutes
+TIMEOUT_SECONDS = 1800
 
 INITIAL_SQL = """
 -- Facebook Legacy Schema
@@ -1900,31 +1911,31 @@ CREATE TABLE post_analytics (
 -- post 17: 2 likes (ids 14,15), 2 comments (ids 18,19), 1 share, 1 save (id 4), views=65
 -- post 18: 0 likes, 0 comments, 0 shares, 0 saves, views=30
 -- post 19: 2 likes (ids 16,17), 3 comments (ids 20,21,22), 1 share, 1 save (id 6), views=70
--- post 20: 1 like (id 18), 1 comment (id 25), 0 shares, 0 saves, views=40
+-- post 20: 1 like (id 18), 1 comment (id 25), 0 shares, 0 saves, views=(1+1)*10=20
 
-INSERT INTO post_analytics VALUES (1, 1, 3, 3, 1, 1, 50);
-INSERT INTO post_analytics VALUES (2, 2, 0, 0, 0, 0, 20);
-INSERT INTO post_analytics VALUES (3, 3, 2, 3, 0, 1, 45);
-INSERT INTO post_analytics VALUES (4, 4, 0, 0, 0, 0, 15);
-INSERT INTO post_analytics VALUES (5, 5, 2, 2, 1, 1, 60);
-INSERT INTO post_analytics VALUES (6, 6, 0, 0, 0, 0, 25);
-INSERT INTO post_analytics VALUES (7, 7, 1, 2, 0, 1, 35);
-INSERT INTO post_analytics VALUES (8, 8, 0, 1, 0, 0, 30);
-INSERT INTO post_analytics VALUES (9, 9, 2, 2, 1, 2, 55);
-INSERT INTO post_analytics VALUES (10, 10, 0, 1, 0, 0, 40);
-INSERT INTO post_analytics VALUES (11, 11, 1, 1, 0, 0, 30);
-INSERT INTO post_analytics VALUES (12, 12, 0, 0, 0, 0, 10);
-INSERT INTO post_analytics VALUES (13, 13, 1, 2, 0, 1, 45);
-INSERT INTO post_analytics VALUES (14, 14, 0, 0, 0, 0, 20);
-INSERT INTO post_analytics VALUES (15, 15, 1, 2, 0, 1, 50);
-INSERT INTO post_analytics VALUES (16, 16, 0, 0, 0, 0, 10);
-INSERT INTO post_analytics VALUES (17, 17, 2, 2, 1, 1, 65);
-INSERT INTO post_analytics VALUES (18, 18, 0, 0, 0, 0, 30);
-INSERT INTO post_analytics VALUES (19, 19, 2, 3, 1, 1, 70);
-INSERT INTO post_analytics VALUES (20, 20, 1, 1, 0, 0, 40);
+INSERT INTO post_analytics VALUES (1, 1, 3, 3, 1, 1, 60);
+INSERT INTO post_analytics VALUES (2, 2, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (3, 3, 2, 3, 0, 1, 50);
+INSERT INTO post_analytics VALUES (4, 4, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (5, 5, 2, 2, 1, 1, 40);
+INSERT INTO post_analytics VALUES (6, 6, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (7, 7, 1, 2, 0, 1, 30);
+INSERT INTO post_analytics VALUES (8, 8, 0, 1, 0, 0, 10);
+INSERT INTO post_analytics VALUES (9, 9, 2, 2, 1, 2, 40);
+INSERT INTO post_analytics VALUES (10, 10, 0, 1, 0, 0, 10);
+INSERT INTO post_analytics VALUES (11, 11, 1, 1, 0, 0, 20);
+INSERT INTO post_analytics VALUES (12, 12, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (13, 13, 1, 2, 0, 1, 30);
+INSERT INTO post_analytics VALUES (14, 14, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (15, 15, 1, 2, 0, 1, 30);
+INSERT INTO post_analytics VALUES (16, 16, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (17, 17, 2, 2, 1, 1, 40);
+INSERT INTO post_analytics VALUES (18, 18, 0, 0, 0, 0, 0);
+INSERT INTO post_analytics VALUES (19, 19, 2, 3, 1, 1, 50);
+INSERT INTO post_analytics VALUES (20, 20, 1, 1, 0, 0, 20);
 
 -- =============================================
--- engagement_daily (5 rows) - COMPUTED
+-- engagement_daily (4 rows) - COMPUTED
 -- =============================================
 CREATE TABLE engagement_daily (
     id INTEGER PRIMARY KEY,
@@ -1935,11 +1946,10 @@ CREATE TABLE engagement_daily (
     total_new_accounts INTEGER NOT NULL DEFAULT 0
 );
 
-INSERT INTO engagement_daily VALUES (1, '2024-01', 5, 6, 10, 0);
-INSERT INTO engagement_daily VALUES (2, '2024-02', 5, 5, 8, 0);
-INSERT INTO engagement_daily VALUES (3, '2024-03', 6, 5, 5, 0);
-INSERT INTO engagement_daily VALUES (4, '2024-04', 4, 2, 2, 0);
-INSERT INTO engagement_daily VALUES (5, '2020-2022', 0, 0, 0, 10);
+INSERT INTO engagement_daily VALUES (1, '2024-01', 4, 7, 9, 0);
+INSERT INTO engagement_daily VALUES (2, '2024-02', 5, 6, 7, 0);
+INSERT INTO engagement_daily VALUES (3, '2024-03', 6, 4, 7, 0);
+INSERT INTO engagement_daily VALUES (4, '2024-04', 5, 1, 2, 0);
 
 -- =============================================
 -- hashtag_trends (8 rows) - COMPUTED
@@ -1953,13 +1963,13 @@ CREATE TABLE hashtag_trends (
 );
 
 INSERT INTO hashtag_trends VALUES (1, 1, '2024-Q1', 3, 7.5);
-INSERT INTO hashtag_trends VALUES (2, 2, '2024-Q1', 2, 4.0);
-INSERT INTO hashtag_trends VALUES (3, 3, '2024-Q1', 3, 5.0);
-INSERT INTO hashtag_trends VALUES (4, 4, '2024-Q1', 2, 4.0);
-INSERT INTO hashtag_trends VALUES (5, 5, '2024-Q1', 2, 5.5);
-INSERT INTO hashtag_trends VALUES (6, 6, '2024-Q1', 1, 3.0);
-INSERT INTO hashtag_trends VALUES (7, 7, '2024-Q1', 1, 3.0);
-INSERT INTO hashtag_trends VALUES (8, 8, '2024-Q1', 1, 4.0);
+INSERT INTO hashtag_trends VALUES (2, 2, '2024-Q1', 2, 5.0);
+INSERT INTO hashtag_trends VALUES (3, 3, '2024-Q1', 3, 7.5);
+INSERT INTO hashtag_trends VALUES (4, 4, '2024-Q1', 2, 5.0);
+INSERT INTO hashtag_trends VALUES (5, 5, '2024-Q1', 2, 5.0);
+INSERT INTO hashtag_trends VALUES (6, 6, '2024-Q1', 1, 2.5);
+INSERT INTO hashtag_trends VALUES (7, 7, '2024-Q1', 1, 2.5);
+INSERT INTO hashtag_trends VALUES (8, 8, '2024-Q1', 1, 2.5);
 
 -- =============================================
 -- community_stats (6 rows) - COMPUTED
