@@ -202,7 +202,7 @@ class MigrationEnvironment:
     # ------------------------------------------------------------------
 
     # Tasks where target schema is hidden (agent must read the narrative)
-    HIDDEN_TARGET_TASKS = {"hard_shoplocal_narrative", "hard_shoplocal_formulas"}
+    HIDDEN_TARGET_TASKS = {"hard_shoplocal_narrative", "hard_shoplocal_formulas", "medium_instagram_migration"}
 
     def _build_observation(
         self,
