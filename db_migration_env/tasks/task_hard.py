@@ -1,29 +1,312 @@
-"""Task 3 (Hard): ShopLocal → NexGenMart E-Commerce Acquisition.
+"""Task 4 (Hard v2): ShopLocal → NexGenMart Acquisition — Narrative Mode.
 
-ShopLocal, a scrappy artisan e-commerce platform, has been acquired by NexGenMart,
-a major enterprise retail company. ShopLocal's database was built by a team of 3
-over 5 years — quick and dirty. Email references instead of foreign keys, no indexes,
-no constraints, denormalized tables, and inconsistent naming throughout.
+Same migration as task_hard, but the task description is a detailed narrative
+instead of SQL-like specifications. The agent must parse natural language
+to understand what tables, columns, FKs, and constraints to create.
 
-NexGenMart's platform team requires a complete schema migration to their enterprise
-standard before any data can flow into production systems. Every table must be
-restructured, every text-based reference resolved to proper integer foreign keys,
-and the data normalized across a clean relational schema.
-
-Initial: 35 tables (sl_ prefix), 404 rows, 0 FKs, 0 indexes
-Target:  55 tables (no prefix), 701 rows, 70+ FKs, enterprise constraints
+Initial: 35 tables (sl_ prefix), 404 rows
+Target:  55 tables (no prefix), 701 rows
 """
 
-TASK_ID = "hard_shoplocal_acquisition"
-TASK_DESCRIPTION = (
-    "ShopLocal e-commerce acquired by NexGenMart. Migrate 35 legacy sl_* tables (404 rows, "
-    "zero FKs, email/name/SKU text references) into 55 enterprise-grade tables (701 rows, "
-    "70+ foreign keys, NOT NULL/UNIQUE/DEFAULT constraints). Every table and column must be "
-    "restructured. Drop all 35 original sl_ tables when done. "
-    "Zero table name overlap between source and target."
-)
+TASK_ID = "hard_shoplocal_formulas"
+
+TASK_DESCRIPTION = """
+ShopLocal → NexGenMart Migration Specification
+===============================================
+
+ShopLocal, a small artisan e-commerce platform, has been acquired by NexGenMart. 
+The entire 35-table legacy database (all prefixed with sl_) must be migrated into 
+NexGenMart's 55-table enterprise schema. Every table must be renamed, every email/name 
+reference converted to integer foreign keys, and all data preserved with referential integrity.
+After migration, all 35 legacy sl_ tables must be dropped.
+
+Below is the detailed specification for each target table.
+
+────────────────────────────────────────────────────────────────
+ Table  1 / 55 : users
+────────────────────────────────────────────────────────────────
+The users table serves as the foundation of NexGenMart's identity layer, replacing ShopLocal's informal sl_customers table with a properly normalized structure containing 12 rows. Each row is uniquely identified by an id INTEGER PRIMARY KEY, carried over directly from sl_customers.cid. The customer's name is split into first_name TEXT NOT NULL (from cust_fname) and last_name TEXT NOT NULL (from cust_lname), while email TEXT NOT NULL maps from cust_email and phone TEXT maps from cust_phone, with phone remaining nullable since ShopLocal never required it. Authentication data migrates from cust_pass into password_hash TEXT NOT NULL, and the optional date_of_birth TEXT is drawn from cust_dob. The temporal columns registered_at TEXT NOT NULL and last_active_at TEXT come from cust_joined and cust_last_login respectively. Finally, is_active INTEGER NOT NULL DEFAULT 1 maps directly from cust_is_active.
+
+────────────────────────────────────────────────────────────────
+ Table  2 / 55 : user_addresses
+────────────────────────────────────────────────────────────────
+The user_addresses table consolidates address data that ShopLocal scattered across two different tables into a single, reusable address registry totaling 16 rows. Each record carries an id INTEGER PRIMARY KEY and a user_id INTEGER NOT NULL that references users(id) as a foreign key. The address_type TEXT NOT NULL column distinguishes between 'billing' and 'shipping' entries. Data comes from sl_customers using cust_addr_line1 mapped to line1 TEXT NOT NULL, cust_addr_city to city TEXT NOT NULL, cust_addr_state to state TEXT NOT NULL, and cust_addr_zip to postal_code TEXT NOT NULL. The country TEXT NOT NULL DEFAULT 'US' column is hardcoded for the migration, and is_default INTEGER NOT NULL DEFAULT 0 is set to 1 for the primary billing address.
+
+────────────────────────────────────────────────────────────────
+ Table  3 / 55 : user_preferences
+────────────────────────────────────────────────────────────────
+The user_preferences table is entirely new and does not map from any existing ShopLocal table, yet it must be populated with exactly 12 rows. Each row has an id INTEGER PRIMARY KEY and a user_id INTEGER NOT NULL that references users(id) as a foreign key. Every column is initialized to its default: newsletter_opt_in INTEGER NOT NULL DEFAULT 1, preferred_language TEXT NOT NULL DEFAULT 'en', preferred_currency TEXT NOT NULL DEFAULT 'USD', and theme TEXT NOT NULL DEFAULT 'light'.
+
+────────────────────────────────────────────────────────────────
+ Table  4 / 55 : user_stats
+────────────────────────────────────────────────────────────────
+The user_stats table is a computed summary with 12 rows keyed by id INTEGER PRIMARY KEY with a user_id INTEGER NOT NULL foreign key referencing users(id). The total_orders INTEGER NOT NULL DEFAULT 0 is computed as COUNT(*) FROM sl_orders WHERE ord_cust_email matches the user's email — join sl_orders.ord_cust_email against users.email to group by user. The total_spent REAL NOT NULL DEFAULT 0.0 is computed as SUM(sl_orders.ord_total) for the same grouped rows, returning 0.0 for users with no orders. The average_order_value REAL is total_spent divided by total_orders — use CASE WHEN total_orders > 0 THEN ROUND(total_spent / total_orders, 2) ELSE NULL END since it should be NULL for users with zero orders, not zero. The first_order_at TEXT is MIN(sl_orders.ord_date) and last_order_at TEXT is MAX(sl_orders.ord_date) for each user, both NULL for users who never ordered. Finally, total_reviews INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM sl_reviews WHERE rv_cust_email matches the user's email, returning 0 for users with no reviews.
+
+────────────────────────────────────────────────────────────────
+ Table  5 / 55 : user_notes
+────────────────────────────────────────────────────────────────
+The user_notes table migrates 8 rows from sl_customer_notes. Each note has id INTEGER PRIMARY KEY from nid, and user_id INTEGER NOT NULL FK referencing users(id) resolved by joining note_cust_email against users.email. Columns: content TEXT NOT NULL from note_text, note_type TEXT NOT NULL, author TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'normal', status TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, updated_at TEXT, is_internal INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table  6 / 55 : brands
+────────────────────────────────────────────────────────────────
+Migrates 6 rows from sl_brands. id INTEGER PRIMARY KEY from bid, name TEXT NOT NULL from brand_name, slug TEXT NOT NULL from brand_slug, description TEXT from brand_desc, logo_url TEXT from brand_logo, website_url TEXT from brand_website, country_of_origin TEXT from brand_country, year_founded INTEGER from brand_founded, is_active INTEGER NOT NULL DEFAULT 1, contact_email TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table  7 / 55 : categories
+────────────────────────────────────────────────────────────────
+8 rows from sl_categories with self-referential FK. id INTEGER PRIMARY KEY from catid, name TEXT NOT NULL from cat_name, slug TEXT NOT NULL from cat_slug, description TEXT from cat_desc, parent_id INTEGER FK referencing categories(id) resolved by joining cat_parent_name against categories.name, is_active INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0, image_url TEXT, meta_title TEXT, meta_description TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table  8 / 55 : products
+────────────────────────────────────────────────────────────────
+15 rows from sl_products. id INTEGER PRIMARY KEY from pid, sku TEXT NOT NULL from prod_sku, name TEXT NOT NULL from prod_name, description TEXT, category_id INTEGER NOT NULL FK→categories(id) via JOIN on prod_cat_name=categories.name, brand_id INTEGER FK→brands(id) via JOIN on prod_brand_name=brands.name, base_price REAL NOT NULL from prod_price, cost_price REAL from prod_cost, weight_kg REAL from prod_weight, dimensions TEXT from prod_dims, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL from prod_created, updated_at TEXT from prod_updated.
+
+────────────────────────────────────────────────────────────────
+ Table  9 / 55 : product_variants
+────────────────────────────────────────────────────────────────
+20 rows from sl_product_variants. id INTEGER PRIMARY KEY from vid, product_id INTEGER NOT NULL FK→products(id) via JOIN var_prod_sku=products.sku, variant_name TEXT NOT NULL from var_name, variant_sku TEXT NOT NULL from var_sku, price_adjustment REAL NOT NULL DEFAULT 0.0 from var_price_adj, stock_quantity INTEGER NOT NULL DEFAULT 0 from var_stock, color TEXT from var_color, size TEXT from var_size, weight_kg REAL from var_weight, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL from var_created.
+
+────────────────────────────────────────────────────────────────
+ Table 10 / 55 : product_images
+────────────────────────────────────────────────────────────────
+18 rows from sl_product_images. id INTEGER PRIMARY KEY from imgid, product_id INTEGER NOT NULL FK→products(id) via JOIN img_prod_sku=products.sku, image_url TEXT NOT NULL from img_url, alt_text TEXT, sort_order INTEGER NOT NULL DEFAULT 0, is_primary INTEGER NOT NULL DEFAULT 0, width INTEGER, height INTEGER, file_size_kb INTEGER, mime_type TEXT NOT NULL DEFAULT 'image/jpeg', uploaded_at TEXT NOT NULL.
+
+────────────────────────────────────────────────────────────────
+ Table 11 / 55 : tags
+────────────────────────────────────────────────────────────────
+10 rows from sl_tags. id INTEGER PRIMARY KEY from tid, name TEXT NOT NULL from tag_name, slug TEXT NOT NULL from tag_slug, description TEXT, usage_count INTEGER NOT NULL DEFAULT 0, is_trending INTEGER NOT NULL DEFAULT 0, color TEXT, created_by_id INTEGER FK→users(id) via JOIN tag_created_by=users.email, created_at TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table 12 / 55 : product_tags
+────────────────────────────────────────────────────────────────
+22 rows from sl_product_tags. id INTEGER PRIMARY KEY from ptid, product_id INTEGER NOT NULL FK→products(id) via JOIN pt_prod_sku=products.sku, tag_id INTEGER NOT NULL FK→tags(id) via JOIN pt_tag_name=tags.name, added_by_id INTEGER FK→users(id) via JOIN pt_added_by=users.email, added_at TEXT NOT NULL, is_auto_tagged INTEGER NOT NULL DEFAULT 0, weight REAL NOT NULL DEFAULT 1.0, source TEXT NOT NULL DEFAULT 'manual', relevance_score REAL, is_approved INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table 13 / 55 : product_attributes
+────────────────────────────────────────────────────────────────
+20 rows, NEW. id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL FK→products(id), attribute_name TEXT NOT NULL, attribute_value TEXT NOT NULL, attribute_type TEXT NOT NULL DEFAULT 'text', sort_order INTEGER NOT NULL DEFAULT 0, is_filterable INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL.
+
+────────────────────────────────────────────────────────────────
+ Table 14 / 55 : product_price_history
+────────────────────────────────────────────────────────────────
+15 rows, NEW. id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL FK→products(id), old_price REAL NOT NULL, new_price REAL NOT NULL, changed_at TEXT NOT NULL, changed_by TEXT NOT NULL DEFAULT 'system', reason TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 15 / 55 : orders
+────────────────────────────────────────────────────────────────
+20 rows from sl_orders. id INTEGER PRIMARY KEY from oid, user_id INTEGER NOT NULL FK→users(id) via JOIN ord_cust_email=users.email, shipping_address_id INTEGER NOT NULL FK→user_addresses(id), billing_address_id INTEGER FK→user_addresses(id), order_date TEXT NOT NULL, status TEXT NOT NULL, subtotal REAL NOT NULL, tax_amount REAL NOT NULL DEFAULT 0.0, shipping_cost REAL NOT NULL DEFAULT 0.0, discount_amount REAL NOT NULL DEFAULT 0.0, total_amount REAL NOT NULL from ord_total, notes TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 16 / 55 : order_items
+────────────────────────────────────────────────────────────────
+35 rows from sl_order_items. id INTEGER PRIMARY KEY from oiid, order_id INTEGER NOT NULL FK→orders(id), product_id INTEGER NOT NULL FK→products(id) via JOIN oi_prod_sku=products.sku, variant_id INTEGER FK→product_variants(id) via JOIN oi_variant_sku=product_variants.variant_sku, quantity INTEGER NOT NULL, unit_price REAL NOT NULL, subtotal REAL NOT NULL, discount_amount REAL NOT NULL DEFAULT 0.0, tax_amount REAL NOT NULL DEFAULT 0.0, status TEXT NOT NULL DEFAULT 'confirmed'.
+
+────────────────────────────────────────────────────────────────
+ Table 17 / 55 : order_status_history
+────────────────────────────────────────────────────────────────
+66 rows, NEW derived from sl_orders. id INTEGER PRIMARY KEY, order_id INTEGER NOT NULL FK→orders(id), from_status TEXT, to_status TEXT NOT NULL, changed_at TEXT NOT NULL, changed_by TEXT NOT NULL DEFAULT 'system', notes TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 18 / 55 : payments
+────────────────────────────────────────────────────────────────
+20 rows from sl_payments. id INTEGER PRIMARY KEY from payid, order_id INTEGER NOT NULL FK→orders(id), user_id INTEGER NOT NULL FK→users(id) via JOIN pay_cust_email=users.email, amount REAL NOT NULL, payment_method TEXT NOT NULL, status TEXT NOT NULL, transaction_ref TEXT, gateway TEXT NOT NULL, processed_at TEXT NOT NULL, currency TEXT NOT NULL DEFAULT 'USD', processing_fee REAL NOT NULL DEFAULT 0.0.
+
+────────────────────────────────────────────────────────────────
+ Table 19 / 55 : refunds
+────────────────────────────────────────────────────────────────
+6 rows from sl_refunds. id INTEGER PRIMARY KEY from rfid, order_id INTEGER NOT NULL FK→orders(id), payment_id INTEGER NOT NULL FK→payments(id) looked up by order_id, user_id INTEGER NOT NULL FK→users(id) via JOIN, amount REAL NOT NULL, reason TEXT NOT NULL, status TEXT NOT NULL, refund_method TEXT NOT NULL, requested_at TEXT NOT NULL, processed_at TEXT, processed_by TEXT, notes TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 20 / 55 : gift_cards
+────────────────────────────────────────────────────────────────
+5 rows from sl_gift_cards. id INTEGER PRIMARY KEY from gcid, code TEXT NOT NULL from gc_code, balance REAL NOT NULL, initial_amount REAL NOT NULL from gc_initial_amt, purchaser_id INTEGER FK→users(id) via JOIN gc_cust_email=users.email, recipient_email TEXT, message TEXT, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, expires_at TEXT, last_used_at TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 21 / 55 : gift_card_transactions
+────────────────────────────────────────────────────────────────
+8 rows, NEW. id INTEGER PRIMARY KEY, gift_card_id INTEGER NOT NULL FK→gift_cards(id), order_id INTEGER FK→orders(id), amount REAL NOT NULL, transaction_type TEXT NOT NULL, created_at TEXT NOT NULL, notes TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 22 / 55 : shipping_carriers
+────────────────────────────────────────────────────────────────
+4 rows from sl_carriers. id INTEGER PRIMARY KEY from crid, name TEXT NOT NULL from cr_name, code TEXT NOT NULL from cr_code, website_url TEXT, phone TEXT, tracking_url_template TEXT, is_active INTEGER NOT NULL DEFAULT 1, avg_delivery_days INTEGER, quality_rating REAL, contact_email TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 23 / 55 : warehouses
+────────────────────────────────────────────────────────────────
+4 rows from sl_warehouses. id INTEGER PRIMARY KEY from wid, name TEXT NOT NULL from wh_name, code TEXT NOT NULL from wh_code, address TEXT NOT NULL from wh_addr, city TEXT NOT NULL, state TEXT NOT NULL, postal_code TEXT NOT NULL from wh_zip, country TEXT NOT NULL DEFAULT 'US', manager_email TEXT, phone TEXT, capacity INTEGER, is_active INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table 24 / 55 : vendors
+────────────────────────────────────────────────────────────────
+5 rows from sl_suppliers. id INTEGER PRIMARY KEY from sid, name TEXT NOT NULL from sup_name, contact_person TEXT, email TEXT, phone TEXT, address TEXT, city TEXT, country TEXT, payment_terms TEXT, lead_time_days INTEGER NOT NULL DEFAULT 14, quality_rating REAL, is_active INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table 25 / 55 : inventory_levels
+────────────────────────────────────────────────────────────────
+15 rows from sl_inventory. id INTEGER PRIMARY KEY from invid, product_id INTEGER NOT NULL FK→products(id) via JOIN inv_prod_sku=products.sku, warehouse_id INTEGER NOT NULL FK→warehouses(id) via JOIN inv_wh_name=warehouses.name, quantity INTEGER NOT NULL DEFAULT 0, reserved INTEGER NOT NULL DEFAULT 0, available INTEGER NOT NULL DEFAULT 0, reorder_point INTEGER NOT NULL DEFAULT 10, reorder_quantity INTEGER NOT NULL DEFAULT 50, last_restocked_at TEXT, last_sold_at TEXT, unit_cost REAL.
+
+────────────────────────────────────────────────────────────────
+ Table 26 / 55 : vendor_products
+────────────────────────────────────────────────────────────────
+12 rows derived from sl_purchase_orders. id INTEGER PRIMARY KEY, vendor_id INTEGER NOT NULL FK→vendors(id), product_id INTEGER NOT NULL FK→products(id), unit_cost REAL NOT NULL, lead_time_days INTEGER NOT NULL, is_preferred INTEGER NOT NULL DEFAULT 0, min_order_quantity INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table 27 / 55 : purchase_orders
+────────────────────────────────────────────────────────────────
+12 rows from sl_purchase_orders. id INTEGER PRIMARY KEY from poid, vendor_id INTEGER NOT NULL FK→vendors(id) via JOIN po_sup_name=vendors.name, status TEXT NOT NULL, ordered_date TEXT NOT NULL, expected_date TEXT, received_date TEXT, warehouse_id INTEGER NOT NULL FK→warehouses(id) via JOIN po_wh_name=warehouses.name, total_cost REAL NOT NULL, notes TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 28 / 55 : purchase_order_lines
+────────────────────────────────────────────────────────────────
+12 rows from sl_purchase_orders. id INTEGER PRIMARY KEY, purchase_order_id INTEGER NOT NULL FK→purchase_orders(id), product_id INTEGER NOT NULL FK→products(id) via JOIN po_prod_sku=products.sku, quantity INTEGER NOT NULL, unit_cost REAL NOT NULL, total_cost REAL NOT NULL.
+
+────────────────────────────────────────────────────────────────
+ Table 29 / 55 : inventory_movements
+────────────────────────────────────────────────────────────────
+18 rows from sl_stock_movements. id INTEGER PRIMARY KEY from smid, product_id INTEGER NOT NULL FK→products(id) via JOIN sm_prod_sku=products.sku, warehouse_id INTEGER NOT NULL FK→warehouses(id) via JOIN sm_wh_name=warehouses.name, movement_type TEXT NOT NULL, quantity INTEGER NOT NULL, reference_id TEXT, notes TEXT, performed_by TEXT, created_at TEXT NOT NULL, unit_cost REAL.
+
+────────────────────────────────────────────────────────────────
+ Table 30 / 55 : delivery_zones
+────────────────────────────────────────────────────────────────
+8 rows from sl_shipping_zones. id INTEGER PRIMARY KEY from szid, zone_name TEXT NOT NULL, states_covered TEXT NOT NULL, base_rate REAL NOT NULL, per_kg_rate REAL NOT NULL, min_delivery_days INTEGER NOT NULL, max_delivery_days INTEGER NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, free_shipping_threshold REAL.
+
+────────────────────────────────────────────────────────────────
+ Table 31 / 55 : zone_carrier_rates
+────────────────────────────────────────────────────────────────
+8 rows, NEW junction. id INTEGER PRIMARY KEY, zone_id INTEGER NOT NULL FK→delivery_zones(id), carrier_id INTEGER NOT NULL FK→shipping_carriers(id), rate_multiplier REAL NOT NULL DEFAULT 1.0, is_active INTEGER NOT NULL DEFAULT 1. Derived from sl_shipping_zones.sz_carrier_name matched to shipping_carriers.
+
+────────────────────────────────────────────────────────────────
+ Table 32 / 55 : shipments
+────────────────────────────────────────────────────────────────
+18 rows from sl_shipments. id INTEGER PRIMARY KEY from shid, order_id INTEGER NOT NULL FK→orders(id), carrier_id INTEGER NOT NULL FK→shipping_carriers(id) via JOIN sh_carrier_name=shipping_carriers.name, tracking_number TEXT, status TEXT NOT NULL, shipped_at TEXT, estimated_delivery_at TEXT, actual_delivery_at TEXT, weight_kg REAL, cost REAL NOT NULL, requires_signature INTEGER NOT NULL DEFAULT 0.
+
+────────────────────────────────────────────────────────────────
+ Table 33 / 55 : shipment_items
+────────────────────────────────────────────────────────────────
+33 rows, NEW. id INTEGER PRIMARY KEY, shipment_id INTEGER NOT NULL FK→shipments(id), order_item_id INTEGER NOT NULL FK→order_items(id), quantity INTEGER NOT NULL. Derived from shipments+order_items.
+
+────────────────────────────────────────────────────────────────
+ Table 34 / 55 : return_requests
+────────────────────────────────────────────────────────────────
+8 rows from sl_returns. id INTEGER PRIMARY KEY from rtid, order_id INTEGER NOT NULL FK→orders(id), user_id INTEGER NOT NULL FK→users(id) via JOIN rt_cust_email=users.email, reason TEXT NOT NULL, status TEXT NOT NULL, requested_at TEXT NOT NULL, approved_at TEXT, refund_amount REAL, refund_method TEXT, handled_by INTEGER FK→users(id), notes TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 35 / 55 : return_items
+────────────────────────────────────────────────────────────────
+8 rows, NEW. id INTEGER PRIMARY KEY, return_request_id INTEGER NOT NULL FK→return_requests(id), order_item_id INTEGER NOT NULL FK→order_items(id), quantity INTEGER NOT NULL, reason TEXT NOT NULL, condition TEXT NOT NULL DEFAULT 'unopened'.
+
+────────────────────────────────────────────────────────────────
+ Table 36 / 55 : discount_codes
+────────────────────────────────────────────────────────────────
+6 rows from sl_coupons. id INTEGER PRIMARY KEY from cpid, code TEXT NOT NULL, description TEXT, discount_type TEXT NOT NULL, discount_value REAL NOT NULL, minimum_order REAL, max_redemptions INTEGER, times_redeemed INTEGER NOT NULL DEFAULT 0, valid_from TEXT NOT NULL, valid_until TEXT, is_active INTEGER NOT NULL DEFAULT 1, created_by TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 37 / 55 : discount_redemptions
+────────────────────────────────────────────────────────────────
+10 rows from sl_coupon_uses. id INTEGER PRIMARY KEY from cuid, discount_code_id INTEGER NOT NULL FK→discount_codes(id) via JOIN cu_code=discount_codes.code, user_id INTEGER NOT NULL FK→users(id) via JOIN cu_cust_email=users.email, order_id INTEGER NOT NULL FK→orders(id), discount_applied REAL NOT NULL, redeemed_at TEXT NOT NULL, ip_address TEXT, user_agent TEXT, session_id TEXT, is_first_purchase INTEGER NOT NULL DEFAULT 0.
+
+────────────────────────────────────────────────────────────────
+ Table 38 / 55 : marketing_campaigns
+────────────────────────────────────────────────────────────────
+5 rows from sl_campaigns. id INTEGER PRIMARY KEY from cmpid, campaign_name TEXT NOT NULL, description TEXT, campaign_type TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT, budget REAL, amount_spent REAL NOT NULL DEFAULT 0.0, status TEXT NOT NULL, target_audience TEXT, created_by TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 39 / 55 : campaign_discount_links
+────────────────────────────────────────────────────────────────
+8 rows, NEW junction. id INTEGER PRIMARY KEY, campaign_id INTEGER NOT NULL FK→marketing_campaigns(id), discount_code_id INTEGER NOT NULL FK→discount_codes(id), created_at TEXT NOT NULL.
+
+────────────────────────────────────────────────────────────────
+ Table 40 / 55 : saved_lists
+────────────────────────────────────────────────────────────────
+12 rows from sl_wishlists (restructured). id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL FK→users(id), name TEXT NOT NULL DEFAULT 'My Wishlist', is_public INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT. One list per user.
+
+────────────────────────────────────────────────────────────────
+ Table 41 / 55 : saved_list_items
+────────────────────────────────────────────────────────────────
+12 rows from sl_wishlists. id INTEGER PRIMARY KEY, saved_list_id INTEGER NOT NULL FK→saved_lists(id), product_id INTEGER NOT NULL FK→products(id) via JOIN wl_prod_sku=products.sku, added_at TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'medium', notes TEXT, price_when_added REAL, notify_on_sale INTEGER NOT NULL DEFAULT 0.
+
+────────────────────────────────────────────────────────────────
+ Table 42 / 55 : newsletter_subscribers
+────────────────────────────────────────────────────────────────
+10 rows from sl_email_subs. id INTEGER PRIMARY KEY from esid, email TEXT NOT NULL, user_id INTEGER FK→users(id) via JOIN es_cust_email=users.email, subscribed_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active', source TEXT, content_preferences TEXT, last_email_sent_at TEXT, open_rate REAL, bounce_count INTEGER NOT NULL DEFAULT 0.
+
+────────────────────────────────────────────────────────────────
+ Table 43 / 55 : support_agents
+────────────────────────────────────────────────────────────────
+4 rows from sl_agents. id INTEGER PRIMARY KEY from agid, full_name TEXT NOT NULL from ag_name, email TEXT NOT NULL from ag_email, phone TEXT, department TEXT NOT NULL, role TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, hire_date TEXT NOT NULL, skills TEXT, average_rating REAL.
+
+────────────────────────────────────────────────────────────────
+ Table 44 / 55 : support_tickets
+────────────────────────────────────────────────────────────────
+10 rows from sl_tickets. id INTEGER PRIMARY KEY from tkid, user_id INTEGER NOT NULL FK→users(id) via JOIN tk_cust_email=users.email, assigned_agent_id INTEGER FK→support_agents(id) via JOIN tk_agent_name=support_agents.full_name, subject TEXT NOT NULL, priority TEXT NOT NULL DEFAULT 'medium', status TEXT NOT NULL, channel TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT, resolved_at TEXT, satisfaction_score INTEGER.
+
+────────────────────────────────────────────────────────────────
+ Table 45 / 55 : ticket_messages
+────────────────────────────────────────────────────────────────
+15 rows from sl_ticket_msgs. id INTEGER PRIMARY KEY from tmid, ticket_id INTEGER NOT NULL FK→support_tickets(id), sender_type TEXT NOT NULL, sender_id INTEGER NOT NULL (resolved via JOIN on users.email or support_agents.email depending on sender_type), message_body TEXT NOT NULL, is_internal INTEGER NOT NULL DEFAULT 0, attachments TEXT, created_at TEXT NOT NULL, read_at TEXT, is_edited INTEGER NOT NULL DEFAULT 0.
+
+────────────────────────────────────────────────────────────────
+ Table 46 / 55 : product_reviews
+────────────────────────────────────────────────────────────────
+15 rows from sl_reviews. id INTEGER PRIMARY KEY from rvid, product_id INTEGER NOT NULL FK→products(id) via JOIN rv_prod_sku=products.sku, user_id INTEGER NOT NULL FK→users(id) via JOIN rv_cust_email=users.email, rating INTEGER NOT NULL, title TEXT, body TEXT, is_verified_purchase INTEGER NOT NULL DEFAULT 0, is_approved INTEGER NOT NULL DEFAULT 0, helpful_votes INTEGER NOT NULL DEFAULT 0, reported_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL.
+
+────────────────────────────────────────────────────────────────
+ Table 47 / 55 : review_responses
+────────────────────────────────────────────────────────────────
+5 rows, NEW. id INTEGER PRIMARY KEY, review_id INTEGER NOT NULL FK→product_reviews(id), agent_id INTEGER NOT NULL FK→support_agents(id), response_body TEXT NOT NULL, created_at TEXT NOT NULL, is_public INTEGER NOT NULL DEFAULT 1.
+
+────────────────────────────────────────────────────────────────
+ Table 48 / 55 : content_pages
+────────────────────────────────────────────────────────────────
+5 rows from sl_pages. id INTEGER PRIMARY KEY from pgid, title TEXT NOT NULL, slug TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', author_id INTEGER FK→users(id) via JOIN pg_author_email=users.email, meta_title TEXT, meta_description TEXT, created_at TEXT NOT NULL, updated_at TEXT, is_public INTEGER NOT NULL DEFAULT 0.
+
+────────────────────────────────────────────────────────────────
+ Table 49 / 55 : promotional_banners
+────────────────────────────────────────────────────────────────
+6 rows from sl_banners. id INTEGER PRIMARY KEY from bnid, title TEXT NOT NULL, image_url TEXT NOT NULL, target_url TEXT, display_position TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT, is_active INTEGER NOT NULL DEFAULT 1, click_count INTEGER NOT NULL DEFAULT 0, impression_count INTEGER NOT NULL DEFAULT 0, created_by TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 50 / 55 : tax_rules
+────────────────────────────────────────────────────────────────
+6 rows from sl_tax_rates. id INTEGER PRIMARY KEY from txid, jurisdiction TEXT NOT NULL from tx_state, rate REAL NOT NULL, tax_name TEXT NOT NULL, tax_type TEXT NOT NULL, is_active INTEGER NOT NULL DEFAULT 1, effective_from TEXT NOT NULL, effective_until TEXT, applies_to TEXT NOT NULL DEFAULT 'all', created_at TEXT NOT NULL.
+
+────────────────────────────────────────────────────────────────
+ Table 51 / 55 : tax_rate_history
+────────────────────────────────────────────────────────────────
+6 rows, NEW. id INTEGER PRIMARY KEY, tax_rule_id INTEGER NOT NULL FK→tax_rules(id), old_rate REAL NOT NULL, new_rate REAL NOT NULL, changed_at TEXT NOT NULL, reason TEXT.
+
+────────────────────────────────────────────────────────────────
+ Table 52 / 55 : product_performance
+────────────────────────────────────────────────────────────────
+The product_performance table is a computed analytics scorecard with 15 rows — one per product — keyed by id INTEGER PRIMARY KEY with product_id INTEGER NOT NULL foreign key referencing products(id). The total_units_sold INTEGER NOT NULL DEFAULT 0 is computed as SUM(sl_order_items.oi_qty) grouped by product, where you join sl_order_items.oi_prod_sku against products.sku to map SKUs to product IDs — products with no sales get 0. The total_revenue REAL NOT NULL DEFAULT 0.0 is SUM(sl_order_items.oi_subtotal) for the same grouped rows. The average_rating REAL is computed as ROUND(AVG(sl_reviews.rv_rating), 2) grouped by product, joining sl_reviews.rv_prod_sku against products.sku — NULL for products with no reviews. The review_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) from the same sl_reviews join. The wishlist_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM sl_wishlists grouped by product, joining sl_wishlists.wl_prod_sku against products.sku. The return_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM sl_returns joined through sl_order_items to identify which products were returned. The conversion_rate REAL is nullable and left as NULL since it requires clickstream data that ShopLocal did not collect.
+
+────────────────────────────────────────────────────────────────
+ Table 53 / 55 : category_performance
+────────────────────────────────────────────────────────────────
+The category_performance table rolls up product-level metrics to the category level with 8 rows — one per category — keyed by id INTEGER PRIMARY KEY with category_id INTEGER NOT NULL foreign key referencing categories(id). The product_count INTEGER NOT NULL DEFAULT 0 is COUNT(*) FROM products WHERE category_id matches each category. The total_revenue REAL NOT NULL DEFAULT 0.0 is computed by joining products to order_items on product_id, then SUM(order_items.subtotal) grouped by category — categories with no sales get 0.0. The average_product_rating REAL is ROUND(AVG(sl_reviews.rv_rating), 2) for all products in the category, joining sl_reviews.rv_prod_sku through products to categories — NULL for categories with no reviewed products. The top_product_id INTEGER foreign key referencing products(id) is the product with the highest total revenue within each category — use a subquery to find the product_id with MAX total_revenue per category, NULL for categories with no sales.
+
+────────────────────────────────────────────────────────────────
+ Table 54 / 55 : daily_revenue_summary
+────────────────────────────────────────────────────────────────
+The daily_revenue_summary table aggregates order-level financials by date with 20 rows — one per unique order date — keyed by id INTEGER PRIMARY KEY. The summary_date TEXT NOT NULL is each distinct value of sl_orders.ord_date. The order_count INTEGER NOT NULL is COUNT(*) FROM sl_orders grouped by ord_date. The total_revenue REAL NOT NULL is SUM(sl_orders.ord_total) for that date. The total_tax REAL NOT NULL is SUM(sl_orders.ord_tax) for that date. The total_shipping REAL NOT NULL is SUM(sl_orders.ord_ship_cost) for that date. The total_discounts REAL NOT NULL is SUM(sl_orders.ord_discount) for that date. The average_order_value REAL NOT NULL is ROUND(total_revenue / order_count, 2) for each date. Use ROW_NUMBER() OVER (ORDER BY ord_date) to assign sequential IDs.
+
+────────────────────────────────────────────────────────────────
+ Table 55 / 55 : user_cohort_analysis
+────────────────────────────────────────────────────────────────
+The user_cohort_analysis table segments customers by registration month with 4 rows — one per distinct cohort — keyed by id INTEGER PRIMARY KEY. The cohort_month TEXT NOT NULL is derived from SUBSTR(sl_customers.cust_joined, 1, 7) to extract the 'YYYY-MM' portion of each customer's join date. The cohort_size INTEGER NOT NULL is COUNT(*) of customers in each cohort month. The orders_month_1 INTEGER NOT NULL DEFAULT 0 is the count of orders placed by cohort members within 30 days of their registration — join sl_orders.ord_cust_email against sl_customers.cust_email and filter WHERE ord_date between cust_joined and cust_joined + 30 days. The orders_month_2 INTEGER NOT NULL DEFAULT 0 is the same count but for days 31-60 after registration. The revenue_month_1 REAL NOT NULL DEFAULT 0.0 is SUM(sl_orders.ord_total) for those month-1 orders, and revenue_month_2 REAL NOT NULL DEFAULT 0.0 is SUM for month-2. The retention_rate REAL is the fraction of cohort members who placed at least one order in month 2 divided by those who ordered in month 1 — NULL if no one ordered in month 1.
+
+────────────────────────────────────────────────────────────────
+ Legacy Cleanup
+────────────────────────────────────────────────────────────────
+Drop all 35 sl_ tables: sl_customers, sl_customer_notes, sl_products, sl_product_images, sl_product_variants, sl_product_tags, sl_categories, sl_brands, sl_tags, sl_orders, sl_order_items, sl_payments, sl_refunds, sl_gift_cards, sl_shipments, sl_carriers, sl_shipping_zones, sl_returns, sl_coupons, sl_coupon_uses, sl_campaigns, sl_wishlists, sl_email_subs, sl_tickets, sl_ticket_msgs, sl_agents, sl_pages, sl_reviews, sl_banners, sl_tax_rates, sl_warehouses, sl_inventory, sl_suppliers, sl_purchase_orders, sl_stock_movements.
+
+"""
+
 DIFFICULTY = "hard"
-TIMEOUT_SECONDS = 1800  # 30 minutes
+
+TIMEOUT_SECONDS = 1800
 
 INITIAL_SQL = """
 -- ShopLocal Legacy Schema

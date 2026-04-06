@@ -24,7 +24,19 @@ tasks:
     difficulty: medium
     timeout: 1800
     description: "Legacy LMS → EduCloud: 15 legacy_* tables → 21 standard tables. Normalize, split addresses, compute stats."
-  - id: hard_ecommerce_acquisition
+  - id: hard_shoplocal_acquisition
     difficulty: hard
     timeout: 1800
-    description: "OldShop → MegaMart: 20 old_* tables → 25 standard tables. Full overhaul with FK normalization and analytics."
+    description: "ShopLocal → NexGenMart: 35 sl_* tables → 55 standard tables. Full overhaul with FK normalization and analytics."
+  - id: hard_shoplocal_narrative
+    difficulty: hard
+    timeout: 1800
+    description: "Same as hard_shoplocal but target schema hidden — described via 30K-char narrative."
+  - id: hard_shoplocal_formulas
+    difficulty: hard
+    timeout: 1800
+    description: "Same as hard_shoplocal_narrative with explicit computation formulas for aggregation tables."
+  - id: hard_hospital_acquisition
+    difficulty: hard
+    timeout: 1800
+    description: "HealthFirst Clinic → MedCore: 31 hc_* tables → 41 enterprise tables. Split monolithic reports into 6 specialized types."
