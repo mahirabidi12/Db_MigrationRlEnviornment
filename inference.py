@@ -29,7 +29,7 @@ from db_migration_env.tasks.registry import TASK_REGISTRY
 # ---------------------------------------------------------------------------
 
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 TEMPERATURE = 0.0
@@ -57,7 +57,7 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
     success_val = str(success).lower()
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={success_val} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
+    print(f"[END] success={success_val} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -317,10 +317,10 @@ def run_task(task_id: str, client: OpenAI) -> dict:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    if not API_KEY:
-        print("WARNING: No HF_TOKEN or API_KEY set. LLM calls may fail.")
+    if not HF_TOKEN:
+        print("WARNING: No HF_TOKEN set. LLM calls may fail.")
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "none")
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     task_ids = list(TASK_REGISTRY.keys())
     all_results = {}
