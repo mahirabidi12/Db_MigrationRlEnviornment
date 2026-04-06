@@ -149,6 +149,31 @@ def format_observation(obs: MigrationObservation, include_data_sample: bool = Tr
         if len(result) > 500:
             result = result[:500] + "\n... (truncated)"
         lines.append(f"  {result}")
+        lines.append("")
+
+    # --- Reward feedback so the agent knows how it's doing ---
+    meta = obs.metadata or {}
+    bd = meta.get("reward_breakdown", {})
+    if bd:
+        reward = obs.reward or 0
+        cum = meta.get("cumulative_reward") or 0
+        checks_after = bd.get("checks_after", 0)
+        checks_total = bd.get("checks_total", 0)
+        new_checks = bd.get("new_checks_passed", 0)
+        mistake_pen = bd.get("mistake_penalty", 0)
+        mistake_det = bd.get("mistake_details", "")
+
+        lines.append(f"--- STEP FEEDBACK ---")
+        lines.append(f"  Reward: {reward:+.4f} | Cumulative: {cum:+.4f} | Checks passed: {checks_after}/{checks_total}")
+        if new_checks > 0:
+            lines.append(f"  +{new_checks} new checks passed")
+        elif new_checks < 0:
+            lines.append(f"  WARNING: Lost {abs(new_checks)} checks — you broke something!")
+        if mistake_pen < 0:
+            lines.append(f"  Penalty ({mistake_pen:.4f}): {mistake_det}")
+        if obs.last_sql_error:
+            lines.append(f"  SQL error penalty applied — fix the query")
+        lines.append("")
 
     return "\n".join(lines)
 
@@ -243,11 +268,10 @@ def run_task(task_id: str, client: OpenAI) -> dict:
                     break
                 else:
                     # Not done — tell agent to keep going
-                    summary = grade.get("summary", {})
                     messages.append({"role": "assistant", "content": "DONE"})
                     messages.append({"role": "user", "content": (
                         f"Migration is NOT complete. Current score: {grade['total_score']:.4f} "
-                        f"({grade['checks_passed']}/{grade['checks_total']} checks passed). "
+                        f"({grade.get('checks_passed', 0)}/{grade.get('checks_total', 0)} checks). "
                         f"Please continue. Here is the current state:\n\n{format_observation(obs)}"
                     )})
                     step -= 1  # Don't count DONE as a step
@@ -285,6 +309,12 @@ def run_task(task_id: str, client: OpenAI) -> dict:
         grade = env.grade()
         score = grade.get("total_score", 0.0)
         success = score >= 0.85
+
+        print(f"\n  --- GRADE ---")
+        print(f"  Total:      {grade['total_score']}")
+        print(f"  Checks:     {grade.get('checks_passed', 0)}/{grade.get('checks_total', 0)}")
+        print(f"  Steps:      {grade.get('steps_taken', 0)}")
+        print(f"  Errors:     {grade.get('error_count', 0)}")
 
     except Exception as exc:
         grade = env.grade()
