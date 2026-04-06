@@ -201,6 +201,9 @@ class MigrationEnvironment:
     # helpers
     # ------------------------------------------------------------------
 
+    # Tasks where target schema is hidden (agent must read the narrative)
+    HIDDEN_TARGET_TASKS = {"hard_shoplocal_narrative", "hard_shoplocal_formulas"}
+
     def _build_observation(
         self,
         last_result: Optional[str] = None,
@@ -208,8 +211,14 @@ class MigrationEnvironment:
         reward: Optional[float] = None,
     ) -> MigrationObservation:
         current_schema = self.current_db.get_schema_snapshot() if self.current_db else SchemaSnapshot()
-        target_schema = self._target_schema or SchemaSnapshot()
-        diff = compute_schema_diff(current_schema, target_schema)
+        hide_target = self.task and self.task.task_id in self.HIDDEN_TARGET_TASKS
+
+        if hide_target:
+            target_schema = SchemaSnapshot()  # empty — agent reads narrative instead
+            diff = []
+        else:
+            target_schema = self._target_schema or SchemaSnapshot()
+            diff = compute_schema_diff(current_schema, target_schema)
 
         metadata = {
             "episode_id": self._episode_id,
