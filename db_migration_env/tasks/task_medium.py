@@ -1,14 +1,3 @@
-"""Task (Medium): Facebook → Instagram-style Unified Schema Migration — Narrative Mode.
-
-Meta (parent company of Facebook) is consolidating its social platform.
-Facebook's legacy database must be migrated into a new unified Instagram-style
-schema. All Facebook users, their content, interactions, and relationships
-need to move to the new normalized schema.
-
-Initial: 25 tables (fb_ prefix), ~300 rows
-Target:  44 tables (no prefix), ~450 rows
-"""
-
 TASK_ID = "medium_instagram_migration"
 
 TASK_DESCRIPTION = """
@@ -252,7 +241,7 @@ Drop all 25 fb_ tables: fb_users, fb_profiles, fb_friendships, fb_posts, fb_comm
 
 DIFFICULTY = "medium"
 
-TIMEOUT_SECONDS = 600
+TIMEOUT_SECONDS = 360  # 6 minutes
 
 INITIAL_SQL = """
 -- Facebook Legacy Schema

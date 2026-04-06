@@ -1,13 +1,3 @@
-"""Task 4 (Hard v2): ShopLocal → NexGenMart Acquisition — Narrative Mode.
-
-Same migration as task_hard, but the task description is a detailed narrative
-instead of SQL-like specifications. The agent must parse natural language
-to understand what tables, columns, FKs, and constraints to create.
-
-Initial: 35 tables (sl_ prefix), 404 rows
-Target:  55 tables (no prefix), 701 rows
-"""
-
 TASK_ID = "hard_shoplocal_formulas"
 
 TASK_DESCRIPTION = """
@@ -306,7 +296,7 @@ Drop all 35 sl_ tables: sl_customers, sl_customer_notes, sl_products, sl_product
 
 DIFFICULTY = "hard"
 
-TIMEOUT_SECONDS = 1800
+TIMEOUT_SECONDS = 360  # 6 minutes
 
 INITIAL_SQL = """
 -- ShopLocal Legacy Schema
