@@ -16,10 +16,10 @@ observation: MigrationObservation
 state: MigrationState
 
 tasks:
-  - id: hard_hospital_narrative
-    difficulty: hard
+  - id: easy_hospital_migration
+    difficulty: easy
     timeout: 360
-    description: "HealthFirst Clinic → MedCore: 31 hc_* tables → 41 enterprise tables. Narrative mode — target schema hidden, described in 35K-char spec."
+    description: "HealthFirst Clinic → MedCore: 31 hc_* tables → 41 enterprise tables. Split monolithic reports into 6 specialized types."
   - id: medium_instagram_migration
     difficulty: medium
     timeout: 360

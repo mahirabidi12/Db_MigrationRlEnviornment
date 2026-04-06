@@ -1,4 +1,6 @@
 TASK_ID = "hard_shoplocal_formulas"
+DIFFICULTY = "hard"
+TIMEOUT_SECONDS = 360  # 6 minutes
 
 TASK_DESCRIPTION = """
 ShopLocal → NexGenMart Migration Specification
@@ -293,10 +295,6 @@ The user_cohort_analysis table segments customers by registration month with 4 r
 Drop all 35 sl_ tables: sl_customers, sl_customer_notes, sl_products, sl_product_images, sl_product_variants, sl_product_tags, sl_categories, sl_brands, sl_tags, sl_orders, sl_order_items, sl_payments, sl_refunds, sl_gift_cards, sl_shipments, sl_carriers, sl_shipping_zones, sl_returns, sl_coupons, sl_coupon_uses, sl_campaigns, sl_wishlists, sl_email_subs, sl_tickets, sl_ticket_msgs, sl_agents, sl_pages, sl_reviews, sl_banners, sl_tax_rates, sl_warehouses, sl_inventory, sl_suppliers, sl_purchase_orders, sl_stock_movements.
 
 """
-
-DIFFICULTY = "hard"
-
-TIMEOUT_SECONDS = 360  # 6 minutes
 
 INITIAL_SQL = """
 -- ShopLocal Legacy Schema
