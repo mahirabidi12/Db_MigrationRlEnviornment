@@ -200,7 +200,7 @@ def parse_model_sql(response_text: str) -> str:
     text = text.strip()
 
     if text.upper() == "DONE":
-        return "DONE"
+        return FALLBACK_SQL
 
     # If entire text is a SQL statement, use it
     if SQL_KEYWORD_RE.match(text):
@@ -260,22 +260,6 @@ def run_task(task_id: str, client: OpenAI) -> dict:
                 response_text = FALLBACK_SQL
 
             sql = parse_model_sql(response_text)
-
-            if sql == "DONE":
-                # Verify it's actually done
-                grade = env.grade()
-                if grade["total_score"] >= 0.85:
-                    break
-                else:
-                    # Not done — tell agent to keep going
-                    messages.append({"role": "assistant", "content": "DONE"})
-                    messages.append({"role": "user", "content": (
-                        f"Migration is NOT complete. Current score: {grade['total_score']:.4f} "
-                        f"({grade.get('checks_passed', 0)}/{grade.get('checks_total', 0)} checks). "
-                        f"Please continue. Here is the current state:\n\n{format_observation(obs)}"
-                    )})
-                    step -= 1  # Don't count DONE as a step
-                    continue
 
             # Record in conversation
             messages.append({"role": "assistant", "content": sql})
