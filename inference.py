@@ -14,6 +14,7 @@ MANDATORY
 import os
 import re
 import json
+import sys
 import textwrap
 from typing import List, Dict, Optional
 
@@ -30,11 +31,33 @@ from db_migration_env.tasks.registry import TASK_REGISTRY
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 TEMPERATURE = 0.0
 MAX_TOKENS = 1024
 FALLBACK_SQL = "SELECT name FROM sqlite_master WHERE type='table'"
+BENCHMARK = "db-migration-env"
 
 DEBUG = True
+
+
+# ---------------------------------------------------------------------------
+# Mandatory stdout logging helpers — [START], [STEP], [END]
+# ---------------------------------------------------------------------------
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    success_val = str(success).lower()
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={success_val} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -178,11 +201,7 @@ def run_task(task_id: str, client: OpenAI) -> dict:
     obs = env.reset(task_id=task_id)
 
     task = env.task
-    print(f"\n{'='*60}")
-    print(f"Task: {task_id} ({task.difficulty})")
-    print(f"Description: {task.description}")
-    print(f"Timeout: {task.timeout_seconds}s ({task.timeout_seconds//60}min)")
-    print(f"{'='*60}")
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
     planning_prompt = format_observation(obs)
 
@@ -192,77 +211,88 @@ def run_task(task_id: str, client: OpenAI) -> dict:
     ]
 
     step = 0
-    while True:
-        step += 1
-        if obs.done:
-            print("  Environment signalled done.")
-            break
-        if obs.time_remaining <= 0:
-            print("  TIMEOUT — 30 minutes exceeded.")
-            break
+    rewards: List[float] = []
+    success = False
 
-        try:
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-                stream=False,
-            )
-            response_text = completion.choices[0].message.content or ""
-        except Exception as exc:
-            print(f"  Model error ({exc}). Using fallback.")
-            response_text = FALLBACK_SQL
-
-        sql = parse_model_sql(response_text)
-
-        if sql == "DONE":
-            print(f"  Step {step}: Agent declares DONE")
-            # Verify it's actually done
-            grade = env.grade()
-            if grade["total_score"] >= 0.85:
+    try:
+        while True:
+            step += 1
+            if obs.done:
                 break
-            else:
-                # Not done — tell agent to keep going
-                messages.append({"role": "assistant", "content": "DONE"})
-                messages.append({"role": "user", "content": (
-                    f"Migration is NOT complete. Current score: {grade['total_score']:.4f} "
-                    f"(schema={grade['schema_score']:.4f}, data={grade['data_score']:.4f}). "
-                    f"Please continue. Here is the current state:\n\n{format_observation(obs)}"
-                )})
-                continue
+            if obs.time_remaining <= 0:
+                break
 
-        print(f"  Step {step}: {sql[:100]}")
+            try:
+                completion = client.chat.completions.create(
+                    model=MODEL_NAME,
+                    messages=messages,
+                    temperature=TEMPERATURE,
+                    max_tokens=MAX_TOKENS,
+                    stream=False,
+                )
+                response_text = completion.choices[0].message.content or ""
+            except Exception as exc:
+                response_text = FALLBACK_SQL
 
-        # Record in conversation
-        messages.append({"role": "assistant", "content": sql})
+            sql = parse_model_sql(response_text)
 
-        action = MigrationAction(sql=sql)
-        obs = env.step(action)
+            if sql == "DONE":
+                # Verify it's actually done
+                grade = env.grade()
+                if grade["total_score"] >= 0.85:
+                    break
+                else:
+                    # Not done — tell agent to keep going
+                    summary = grade.get("summary", {})
+                    messages.append({"role": "assistant", "content": "DONE"})
+                    messages.append({"role": "user", "content": (
+                        f"Migration is NOT complete. Current score: {grade['total_score']:.4f} "
+                        f"({grade['checks_passed']}/{grade['checks_total']} checks passed). "
+                        f"Please continue. Here is the current state:\n\n{format_observation(obs)}"
+                    )})
+                    step -= 1  # Don't count DONE as a step
+                    continue
 
-        # Build follow-up prompt with result
-        result_prompt = format_observation(obs)
-        messages.append({"role": "user", "content": result_prompt})
+            # Record in conversation
+            messages.append({"role": "assistant", "content": sql})
 
-        if DEBUG and obs.reward is not None:
-            err = " [ERR]" if obs.last_sql_error else ""
-            print(f"         reward={obs.reward:+.4f}{err}")
+            action = MigrationAction(sql=sql)
+            obs = env.step(action)
 
-        # Context window management — keep system + last N exchanges
-        if len(messages) > 30:
-            messages = [messages[0]] + messages[-20:]
+            # Track reward
+            step_reward = obs.reward if obs.reward is not None else 0.0
+            rewards.append(step_reward)
 
-    # Final grade
-    grade = env.grade()
-    env.close()
+            # Mandatory [STEP] log
+            error_str = obs.last_sql_result if obs.last_sql_error else None
+            log_step(
+                step=step,
+                action=sql.replace("\n", " ")[:200],
+                reward=step_reward,
+                done=obs.done,
+                error=error_str,
+            )
 
-    print(f"\n  --- GRADE ---")
-    print(f"  Total:      {grade['total_score']}")
-    print(f"  Schema:     {grade['schema_score']}")
-    print(f"  Data:       {grade['data_score']}")
-    print(f"  Efficiency: {grade['efficiency_score']}")
-    print(f"  Steps:      {grade['steps_taken']}")
-    print(f"  Errors:     {grade['error_count']}")
+            # Build follow-up prompt with result
+            result_prompt = format_observation(obs)
+            messages.append({"role": "user", "content": result_prompt})
+
+            # Context window management — keep system + last N exchanges
+            if len(messages) > 30:
+                messages = [messages[0]] + messages[-20:]
+
+        # Final grade
+        grade = env.grade()
+        score = grade.get("total_score", 0.0)
+        success = score >= 0.85
+
+    except Exception as exc:
+        grade = env.grade()
+        score = grade.get("total_score", 0.0)
+        success = False
+    finally:
+        env.close()
+        log_end(success=success, steps=len(rewards), score=score, rewards=rewards)
 
     return grade
 
