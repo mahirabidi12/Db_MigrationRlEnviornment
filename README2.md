@@ -42,7 +42,7 @@ Agent                          Environment
 
 ## Action Space
 
-The agent sends **one SQL statement per step**:
+The agent sends **SQL statements per step**:
 
 ```json
 {
@@ -52,7 +52,7 @@ The agent sends **one SQL statement per step**:
 
 | Property | Value |
 |---|---|
-| **Type** | Single SQL string |
+| **Type** | SQL string — single or multiple statements (semicolon-separated) |
 | **Supported operations** | `CREATE TABLE`, `INSERT INTO`, `UPDATE`, `DELETE`, `DROP TABLE`, `ALTER TABLE`, `PRAGMA`, `SELECT` |
 | **Multi-statement** | Supported — semicolon-separated statements executed sequentially |
 | **Database** | SQLite (in-memory, per-episode isolation) |
