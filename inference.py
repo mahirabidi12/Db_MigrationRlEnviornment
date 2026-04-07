@@ -224,7 +224,7 @@ def parse_model_sql(response_text: str) -> str:
 
 def run_task(task_id: str, client: OpenAI) -> dict:
     env = MigrationEnvironment()
-    obs = env.reset(task_id=task_id, timeout_override=360)  # 6 min per task in inference
+    obs = env.reset(task_id=task_id, timeout_override=372)
 
     task = env.task
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
