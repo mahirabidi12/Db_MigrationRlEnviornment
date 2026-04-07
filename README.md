@@ -11,9 +11,7 @@ tags:
 
 # DB Migration RL Environment
 
-**[Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/techsas/db-migration-env)**
-
-An **OpenEnv-compliant** reinforcement learning environment where AI agents learn to perform **real database migrations** using SQL. The agent receives an initial database (schema + data) and must transform it to match a target state — exactly the way developers and DBAs handle production migrations.
+An **OpenEnv-compliant** reinforcement learning environment where AI agents learn to perform **real database migrations** using SQL. The agent receives an initial database (schema + data) described in natural language and must transform it to match a target state — exactly the way developers and DBAs handle production migrations.
 
 ## Why Database Migration?
 
@@ -21,8 +19,9 @@ Database migration is one of the most **high-stakes, error-prone** tasks in soft
 
 - **Real SQL execution** — agents run actual SQLite commands, getting real errors and results
 - **Schema + data** — agents must handle both structural changes (DDL) and data transformation (DML)
+- **Narrative mode** — target schema is described in natural language, not shown structurally. Agents must parse specifications to understand what to build
 - **Partial progress** — the reward function tracks incremental progress, not just pass/fail
-- **Genuine difficulty progression** — from table restructuring to full enterprise schema overhauls with computed columns, deduplication, and cross-table joins
+- **Genuine difficulty progression** — from 31-table hospital migrations to 55-table e-commerce platform overhauls
 
 ---
 
@@ -49,87 +48,137 @@ After each step, the agent sees:
 
 ```python
 class MigrationObservation(BaseModel):
-    current_schema: SchemaSnapshot    # Current DB schema with row counts
-    target_schema: SchemaSnapshot     # Target schema to reach
-    schema_diff: List[SchemaDiffItem] # Structured diff (missing tables, columns, type mismatches...)
+    current_schema: SchemaSnapshot    # Current DB schema with row counts and data preview
+    target_schema: SchemaSnapshot     # Target schema (empty in narrative mode)
+    schema_diff: List[SchemaDiffItem] # Structured diff (empty in narrative mode)
     last_sql_result: Optional[str]    # Output of the last SQL command
     last_sql_error: bool              # Whether the last command failed
     step_count: int                   # Current step number
-    max_steps: int                    # Maximum steps for this task
+    timeout_seconds: int              # Timeout for this task
+    time_remaining: float             # Seconds remaining before timeout
     task_id: str                      # Task identifier
-    task_description: str             # Human-readable task description
+    task_description: str             # Detailed narrative specification
     reward: Optional[float]           # Step reward (progress delta)
     done: bool                        # Episode complete?
+    metadata: Dict[str, Any]          # Episode ID, cumulative reward, reward breakdown
 ```
 
-Each `SchemaSnapshot` contains detailed table info: columns (name, type, constraints), foreign keys, indexes, and row counts.
+Each `SchemaSnapshot` contains detailed table info: columns (name, type, constraints), foreign keys, indexes, row counts, and data preview (first 5 rows).
 
-## Reward Function — 7-Dimensional Signal
+In **narrative mode** (all tasks), the `target_schema` is empty and `schema_diff` is empty. The agent must read the `task_description` — a detailed natural language specification — to understand what tables, columns, FKs, constraints, and data mappings to create.
 
-The reward pipeline provides **dense, multi-signal feedback at every step** across 7 dimensions — not just a binary end score. Each step returns a full breakdown in `metadata.reward_breakdown`:
+## State
 
-| Signal | Weight | Description |
-|--------|--------|-------------|
-| **Schema Progress** | 35% | Delta in structural similarity (tables, columns, types, FKs) |
-| **Data Progress** | 40% | Delta in row-level data correctness (harder, so weighted more) |
-| **Diff Reduction** | 10% | Bonus for reducing the number of schema diff items |
-| **Milestone Bonus** | absolute | One-time rewards for key sub-goals (see below) |
-| **Error Penalty** | absolute | Escalating penalty for consecutive errors (-0.02, -0.04, -0.06...) |
-| **Efficiency Cost** | absolute | Quadratic time-pressure curve (cheap early, costly near deadline) |
-| **Safety Penalty** | absolute | Penalizes data-destructive actions (DROP with data, DELETE without WHERE) |
+The full internal environment state is accessible via the `state()` API:
 
-### Milestone System (8 one-time bonuses)
-| Milestone | Bonus | Triggered When |
-|-----------|-------|----------------|
-| `first_target_table` | +0.05 | First target table created |
-| `all_tables_exist` | +0.08 | All target tables now exist |
-| `first_fk_correct` | +0.03 | First foreign key matches target |
-| `all_fks_correct` | +0.06 | All foreign keys correct |
-| `first_data_match` | +0.04 | First table's data fully matches target |
-| `all_data_match` | +0.10 | All target data matches (biggest bonus) |
-| `schema_perfect` | +0.06 | Schema score hits 1.0 |
-| `source_tables_dropped` | +0.04 | All legacy source tables removed |
+```python
+class MigrationState(BaseModel):
+    episode_id: Optional[str]         # Unique episode identifier
+    task_id: str                      # Current task name
+    step_count: int                   # Steps taken so far
+    timeout_seconds: int              # Task timeout limit
+    time_remaining: float             # Seconds left
+    done: bool                        # Episode terminated?
+    cumulative_reward: float          # Total reward accumulated
+    current_schema: SchemaSnapshot    # Current DB state
+    target_schema: SchemaSnapshot     # Target DB state
+    sql_history: List[str]            # All SQL executed
+    error_count: int                  # Number of failed SQL statements
+```
+
+---
+
+## Reward Function — Checklist-Delta with Mistake Penalties
+
+The reward pipeline provides **dense feedback at every step**:
+
+```
+step_reward = (grader_score_after - grader_score_before) - mistake_penalties
+```
+
+| Signal | How it works |
+|--------|-------------|
+| **Positive delta** | Agent passes new grader checks (created a table, fixed a column type, migrated data) |
+| **Negative delta** | Agent broke something that was previously correct |
+| **Structural mistake penalty** | 0.002 per new junk table/column, wrong type, missing constraint |
+| **Wrong data penalty** | 0.0005 per new row that doesn't match the target |
+| **SQL error penalty** | 0.001 per failed SQL statement |
 
 ### Design Properties
-- **Dense gradient**: Every step has meaningful signal (not sparse end-of-episode)
-- **Progress-aware**: Positive reward for moving closer to target, negative for regression
-- **Escalating errors**: First error is mild (-0.02), but 5 consecutive errors cost -0.10 total
-- **Time pressure**: Quadratic cost curve encourages finishing early without being punishing at the start
-- **Safety-aware**: Agents learn that `DROP TABLE` on tables with data is dangerous
-- **Milestone momentum**: Sub-goal bonuses provide clear intermediate objectives for the agent
+- **Dense gradient**: Every step has meaningful signal — not sparse end-of-episode
+- **Progress-aware**: Positive reward for passing new checks, negative for regression
+- **Mistake tracking**: Only penalizes NEW mistakes introduced by the current step, not pre-existing ones
+- **Cumulative tracking**: `metadata.cumulative_reward` tracks total reward across the episode
+- **Detailed breakdown**: Each step includes `metadata.reward_breakdown` with checks passed, delta, and penalty details
 
-### Final Grader (4 dimensions, /grader endpoint)
+---
 
-| Dimension | Weight | What it checks |
-|-----------|--------|---------------|
-| **Schema Correctness** | 30% | Tables, columns, types, PKs, FKs, NOT NULL, defaults — penalizes extras |
-| **Data Correctness** | 35% | Row-level comparison with numeric tolerance (handles float rounding, int/float equivalence) |
-| **Referential Integrity** | 20% | Verifies FK constraints are satisfied in data — no orphan rows, every `customer_id` actually points to a valid customer |
-| **Efficiency** | 15% | Fewer steps + fewer errors = higher score |
+## Grader — Checklist-Based (0.0 to 1.0)
 
-The integrity dimension is what separates good agents from great ones: an agent that creates correct tables but inserts `customer_id=99` when no customer #99 exists will be penalized.
+The grader uses a flat checklist system. Every check is worth exactly 1 point.
+
+**Score = checks_passed / total_checks**
+
+### 12 Check Types
+
+| # | Check Type | What it verifies |
+|---|---|---|
+| 1 | `table_exists` | Target table is present |
+| 2 | `column_exists` | Target column exists in the table |
+| 3 | `column_type_correct` | Column has the correct type (INTEGER, TEXT, REAL) |
+| 4 | `column_nullable_correct` | NOT NULL constraint matches |
+| 5 | `column_primary_key_correct` | PRIMARY KEY flag matches |
+| 6 | `column_default_correct` | DEFAULT value matches |
+| 7 | `fk_exists` | Foreign key constraint is present |
+| 8 | `index_exists` | Index exists with correct columns and uniqueness |
+| 9 | `table_removed` | Legacy table has been dropped |
+| 10 | `column_removed` | Old column no longer exists in restructured table |
+| 11 | `fk_removed` | Old FK constraint has been removed |
+| 12 | `data_row_correct` | Target row exists in current DB (row-level multiset match) |
+
+### Properties
+- **Deterministic** — same inputs always produce the same score
+- **Continuous** — scores range from 0.0 to 1.0 with fine granularity (1000+ checks per task)
+- **Comprehensive** — checks schema structure AND data correctness
+- **No weights** — every check counts equally, making the score transparent
 
 ---
 
 ## Tasks
 
-### Task 1: Restructure Employee Database (Easy)
-- **Initial**: 1 table (`employees` with 10 rows, embedded department info)
-- **Target**: 3 tables — `departments` (deduplicated), restructured `employees` (FK, computed `hire_year`, status column), `audit_log`
-- **Skills**: Deduplication, table recreation (SQLite no DROP COLUMN), `SUBSTR()` for date parsing, INSERT...SELECT with JOINs, FK management
-- **Expected steps**: 8-15
+### Task 1: Hospital Migration (Easy) — `easy_hospital_migration`
+- **Scenario**: HealthFirst Community Clinic acquired by MedCore Enterprise Hospital System
+- **Initial**: 31 tables (`hc_*` prefix), ~350 rows, email-based references, abbreviated column names
+- **Target**: 41 tables (no prefix), ~400 rows, 63 FKs, 48 indexes
+- **Key challenges**: Split monolithic `hc_reports` into 6 specialized report tables, resolve email references to integer FKs, add NOT NULL/DEFAULT/UNIQUE constraints
+- **Grader checks**: ~1,635
+- **Timeout**: 360 seconds
 
-### Task 2: School Database Normalization (Medium)
-- **Initial**: 2 denormalized tables (`student_courses` 15 rows, `student_contacts` 7 rows with duplicates)
-- **Target**: 5 normalized tables — `students` (with computed GPA), `courses`, `enrollments` (junction), `contacts`, `course_stats` (aggregated)
-- **Skills**: Multi-source deduplication, many-to-many junction tables, computed aggregates (`AVG`, `COUNT`), NULL handling, cross-table data reconciliation
-- **Expected steps**: 15-25
+### Task 2: Social Media Migration (Medium) — `medium_instagram_migration`
+- **Scenario**: Meta consolidating Facebook into Instagram-style unified schema
+- **Initial**: 25 tables (`fb_*` prefix), ~300 rows
+- **Target**: 44 tables (no prefix), ~450 rows
+- **Key challenges**: Convert bidirectional friendships to directional follows, create computed engagement metrics, migrate privacy settings, handle media type transformations
+- **Grader checks**: ~1,468
+- **Timeout**: 360 seconds
 
-### Task 3: Enterprise SaaS Platform Overhaul (Hard)
-- **Initial**: 3 denormalized tables (`billing_records` 13 rows, `support_tickets` 8 rows, `activity_log` 8 rows)
-- **Target**: 7 normalized tables — `customers` (with computed `total_spent` and `ticket_count`), `plans`, `subscriptions`, `invoices`, `payments`, `agents`, `tickets`
-- **Skills**: Cross-table deduplication (customers in all 3 sources), complex computed columns (SUM, COUNT across tables), multi-level FK chains (7 tables with interdependencies), NULL payment handling, FK ordering, string extraction, date handling
-- **Expected steps**: 25-45
+### Task 3: E-Commerce Platform Overhaul (Hard) — `hard_shoplocal_formulas`
+- **Scenario**: ShopLocal artisan marketplace acquired by NexGenMart enterprise platform
+- **Initial**: 35 tables (`sl_*` prefix), ~404 rows
+- **Target**: 55 tables (no prefix), ~701 rows
+- **Key challenges**: Computed summary tables (user_stats, product_stats with AVG/SUM/COUNT), self-referential FKs (categories), multi-source address consolidation, order lifecycle tracking, inventory management, coupon/discount systems
+- **Grader checks**: ~2,336
+- **Timeout**: 360 seconds
+
+### Difficulty Progression
+| Metric | Easy | Medium | Hard |
+|--------|------|--------|------|
+| Source tables | 31 | 25 | 35 |
+| Target tables | 41 | 44 | 55 |
+| Total rows | ~400 | ~450 | ~701 |
+| Grader checks | 1,635 | 1,468 | 2,336 |
+| Computed tables | 0 | ~5 | ~8 |
+| FK complexity | email→ID | email→ID + directional | email→ID + self-ref + multi-source |
 
 ---
 
@@ -137,7 +186,7 @@ The integrity dimension is what separates good agents from great ones: an agent 
 
 ### Prerequisites
 - Python 3.10+
-- (Optional) `HF_TOKEN` / `API_KEY` for LLM-based baseline
+- `HF_TOKEN` for LLM-based inference
 
 ### Install
 
@@ -154,14 +203,10 @@ uvicorn db_migration_env.server.app:app --host 0.0.0.0 --port 8000
 ### Run Baseline Inference
 
 ```bash
-# With LLM (set env vars per hackathon spec):
 API_BASE_URL=https://router.huggingface.co/v1 \
 MODEL_NAME=Qwen/Qwen2.5-72B-Instruct \
 HF_TOKEN=hf_... \
 python inference.py
-
-# Against a running server (uses HTTP client):
-python inference.py --url http://localhost:8000
 ```
 
 ### Docker
@@ -184,8 +229,9 @@ docker run -p 8000:8000 db-migration-env
 | `/metadata` | GET | Environment metadata |
 | `/schema` | GET | JSON schemas for Action/Observation/State |
 | `/tasks` | GET | List tasks with action schema |
-| `/grader` | POST | Grade current episode (returns 0.0-1.0 breakdown) |
+| `/grader` | POST | Grade current episode (returns 0.0-1.0 with detailed checks) |
 | `/baseline` | POST | Run baseline inference on all tasks |
+| `/mcp` | POST | MCP JSON-RPC endpoint for OpenEnv compatibility |
 | `/ws` | WebSocket | Persistent session (reset/step/state/close messages) |
 
 ### Example: cURL
@@ -193,11 +239,11 @@ docker run -p 8000:8000 db-migration-env
 ```bash
 # Reset with a specific task
 curl -X POST http://localhost:8000/reset -H 'Content-Type: application/json' \
-  -d '{"task_id": "easy_restructure_employees"}'
+  -d '{"task_id": "easy_hospital_migration"}'
 
 # Execute a SQL statement
 curl -X POST http://localhost:8000/step -H 'Content-Type: application/json' \
-  -d '{"sql": "CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, floor INTEGER NOT NULL)"}'
+  -d '{"sql": "CREATE TABLE patients (id INTEGER PRIMARY KEY, first_name TEXT NOT NULL)"}'
 
 # Grade current episode
 curl -X POST http://localhost:8000/grader
@@ -206,37 +252,21 @@ curl -X POST http://localhost:8000/grader
 curl http://localhost:8000/tasks
 ```
 
-### Example: Python Client
-
-```python
-from db_migration_env.client import MigrationClient
-
-with MigrationClient("http://localhost:8000") as client:
-    obs = client.reset(task_id="easy_restructure_employees")
-    obs = client.step("CREATE TABLE departments (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, floor INTEGER NOT NULL)")
-    obs = client.step("INSERT INTO departments SELECT ROW_NUMBER() OVER (ORDER BY MIN(id)), department_name, department_floor FROM employees GROUP BY department_name")
-    print(f"Schema diff remaining: {len(obs.schema_diff)} items")
-    print(client.grade())
-```
-
 ---
 
 ## Baseline Scores
 
-| Task | Heuristic Score | Schema | Data | Efficiency |
-|------|----------------|--------|------|------------|
-| easy_restructure_employees | **0.474** | 0.81 | 0.04 | 0.87 |
-| medium_school_normalize | **0.524** | 1.0 | 0.0 | 0.98 |
-| hard_saas_overhaul | **0.523** | 1.0 | 0.0 | 0.95 |
+Baseline scores using `Qwen/Qwen2.5-72B-Instruct` with 360-second timeout per task:
 
-*The heuristic baseline creates missing tables/columns from the schema diff but **cannot** perform data migration, deduplication, computed columns, or table restructuring. This demonstrates the significant gap that LLM agents must bridge. Perfect scores require understanding SQL semantics, JOIN logic, aggregation, and FK ordering.*
+| Task | Score | Checks Passed | Total Checks |
+|------|-------|---------------|--------------|
+| `easy_hospital_migration` | TBD | TBD | 1,635 |
+| `medium_instagram_migration` | TBD | TBD | 1,468 |
+| `hard_shoplocal_formulas` | TBD | TBD | 2,336 |
 
-**Achievable scores with optimal play:**
-| Task | Max Score | Steps Required |
-|------|-----------|---------------|
-| easy_restructure_employees | ~0.96 | 9 |
-| medium_school_normalize | ~0.94 | 14 |
-| hard_saas_overhaul | ~0.94 | 19 |
+*Scores will be populated after running `python inference.py` with a valid `HF_TOKEN`.*
+
+**Note**: All tasks use narrative mode — the agent receives a detailed natural language specification instead of seeing the target schema directly. This makes the tasks significantly harder, as the agent must parse and understand prose descriptions to construct correct SQL.
 
 ---
 
@@ -252,17 +282,18 @@ with MigrationClient("http://localhost:8000") as client:
 ├── db_migration_env/
 │   ├── __init__.py
 │   ├── models.py                    # Pydantic models (Action, Observation, State)
-│   ├── db_engine.py                 # SQLite engine + schema diffing + scoring
+│   ├── db_engine.py                 # SQLite engine + schema diffing
+│   ├── reward.py                    # Reward pipeline (delta + penalties)
 │   ├── client.py                    # HTTP client for the environment
 │   ├── tasks/
 │   │   ├── registry.py              # Task registry
-│   │   ├── task_easy.py             # Task 1: Restructure employees (easy)
-│   │   ├── task_medium.py           # Task 2: School normalization (medium)
-│   │   └── task_hard.py             # Task 3: SaaS overhaul (hard)
+│   │   ├── task_easy.py             # Hospital migration (easy)
+│   │   ├── task_medium.py           # Facebook→Instagram migration (medium)
+│   │   └── task_hard.py             # ShopLocal→NexGenMart migration (hard)
 │   ├── graders/
-│   │   └── migration_grader.py      # Deterministic grader (0.0-1.0)
+│   │   └── migration_grader.py      # Checklist-based grader (12 check types)
 │   └── server/
-│       ├── app.py                   # FastAPI application (14 endpoints)
+│       ├── app.py                   # FastAPI application
 │       ├── environment.py           # Core environment logic
 │       └── baseline_runner.py       # Server-side baseline runner
 └── README.md
@@ -282,29 +313,29 @@ Agent                    Environment                    SQLite (in-memory)
   |                          |--- get_schema_snapshot() ---->|
   |                          |<-- SchemaSnapshot ------------|
   |                          |                               |
-  |                          |--- compute_diff(current,      |
-  |                          |       target) --------------->|
-  |                          |--- compute_score() ---------->|
+  |                          |--- compute_step_reward() ---->|
+  |                          |    (grader delta + penalties)  |
   |                          |                               |
   |<-- MigrationObservation -|                               |
-  |    (schema, diff,        |                               |
-  |     reward, done)        |                               |
+  |    (schema, reward,      |                               |
+  |     done, breakdown)     |                               |
 ```
 
-Each episode creates **two** in-memory SQLite databases: one for the agent to modify (current) and one as ground truth (target). The grader compares them structurally and data-wise at any point.
+Each episode creates **two** in-memory SQLite databases: one for the agent to modify (current) and one as ground truth (target). The grader compares them structurally and data-wise at every step.
 
 ---
 
 ## What Makes This Hard for Frontier Models
 
-1. **SQLite quirks** — No `DROP COLUMN`, no `ALTER TABLE MODIFY`. Agents must use the rename-and-recreate pattern.
-2. **FK ordering** — Tables must be created in dependency order. Dropping tables requires disabling FK checks first.
-3. **Deduplication** — Source tables contain duplicates that must be resolved via `GROUP BY` / `DISTINCT`.
-4. **Computed columns** — GPA averages, payment totals, ticket counts must be calculated correctly with proper NULL handling.
-5. **Cross-table joins** — Data scattered across multiple source tables must be reconciled by email/name matching.
-6. **Partial payments** — Some invoices have NULL payments; agents must handle this in their INSERT logic.
-7. **Window functions** — `ROW_NUMBER() OVER (...)` needed for deterministic ID assignment.
-8. **Transaction awareness** — Long migration sequences where one error can cascade.
+1. **Narrative parsing** — Target schema is described in natural language (30K+ characters), not shown structurally. Agents must extract table definitions, column types, FK relationships, and data mapping rules from prose.
+2. **SQLite quirks** — No `DROP COLUMN`, no `ALTER TABLE MODIFY`. Agents must use the rename-and-recreate pattern.
+3. **FK ordering** — Tables must be created in dependency order. Dropping tables requires disabling FK checks first.
+4. **Email-to-ID resolution** — Source tables use email strings as references. Agents must JOIN against created tables to resolve integer FKs.
+5. **Computed columns** — Summary tables require correct `SUM()`, `COUNT()`, `AVG()`, `ROUND()` with proper NULL handling (`CASE WHEN ... THEN ... ELSE NULL END`).
+6. **Monolithic table splitting** — A single source table (e.g., `hc_reports`) must be split into multiple specialized target tables based on a type column.
+7. **Self-referential FKs** — Categories tables with `parent_id` referencing themselves require careful insert ordering.
+8. **Window functions** — `ROW_NUMBER() OVER (ORDER BY ...)` needed for deterministic ID assignment in `INSERT...SELECT`.
+9. **Scale** — 2,336 individual grader checks on the hard task. Every column type, every constraint, every FK, every data row must be exactly correct.
 
 ---
 
