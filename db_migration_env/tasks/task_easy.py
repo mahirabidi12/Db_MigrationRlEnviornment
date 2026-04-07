@@ -1,6 +1,6 @@
 TASK_ID = "easy_hospital_migration"
 DIFFICULTY = "easy"
-TIMEOUT_SECONDS = 3600  # 1 hour (API agents get full time; inference.py overrides to 360s)
+TIMEOUT_SECONDS = 86400
 
 TASK_DESCRIPTION = """
 HealthFirst Clinic → MedCore Enterprise Hospital Migration Specification

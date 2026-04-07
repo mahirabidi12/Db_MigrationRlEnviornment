@@ -49,11 +49,8 @@ class MigrationEnvironment:
     def _time_remaining(self) -> float:
         if not self.task:
             return 0.0
-        timeout = getattr(self, '_timeout', None)
-        if timeout is None:
-            return float('inf')
         elapsed = time.time() - self._start_time
-        return max(0.0, timeout - elapsed)
+        return max(0.0, self._timeout - elapsed)
 
     # ------------------------------------------------------------------
     # reset
@@ -73,7 +70,7 @@ class MigrationEnvironment:
 
         task_id = task_id or "easy_hospital_migration"
         self.task = get_task(task_id)
-        self._timeout = timeout_override
+        self._timeout = timeout_override if timeout_override is not None else self.task.timeout_seconds
 
         self.current_db = DatabaseEngine()
         self.current_db.execute_script(self.task.initial_sql)
