@@ -1,6 +1,6 @@
 TASK_ID = "hard_shoplocal_formulas"
 DIFFICULTY = "hard"
-TIMEOUT_SECONDS = 360  # 6 minutes
+TIMEOUT_SECONDS = 3600  # 1 hour (API agents get full time; inference.py overrides to 360s)
 
 TASK_DESCRIPTION = """
 ShopLocal → NexGenMart Migration Specification
