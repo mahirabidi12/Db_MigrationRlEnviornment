@@ -1,6 +1,6 @@
 # Task Descriptions
 
-This document describes the three migration tasks in the DB Migration RL Environment. Each task is built around a realistic company acquisition — the kind of scenario that database engineers and platform teams deal with in the real world when two companies merge and their data systems need to become one.
+Database migration is one of the most common yet error-prone tasks in software engineering. Every company acquisition, platform consolidation, or system modernisation eventually comes down to the same problem: take the old database, understand it, and transform it into the new one without losing a single row. It happens in healthcare when clinics get acquired by hospital chains. It happens in social media when platforms consolidate. It happens in e-commerce when scrappy startups get absorbed by enterprise retailers. Our three tasks are modelled directly after these real-world scenarios.
 
 Every task operates in **narrative mode**. The agent never sees the target schema as structured data. Instead, it receives a detailed natural-language specification — pages of prose describing what each target table should look like, where the data comes from, and how references should be resolved. The agent must read, comprehend, plan, and execute. This is closer to how a real engineer works: they read a migration spec document, not a diff tool.
 
