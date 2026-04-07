@@ -203,17 +203,18 @@ def parse_model_sql(response_text: str) -> str:
     if text.upper() == "DONE":
         return FALLBACK_SQL
 
-    # If entire text is a SQL statement, use it
+    # If entire text starts with SQL, send it all (multi-statement supported)
     if SQL_KEYWORD_RE.match(text):
-        # Take everything up to the first semicolon (if any), to avoid multi-statement
-        parts = text.split(";")
-        return parts[0].strip()
+        return text
 
-    # Try to find SQL in lines
+    # Try to extract all SQL lines
+    sql_lines = []
     for line in text.split("\n"):
         line = line.strip()
         if SQL_KEYWORD_RE.match(line):
-            return line
+            sql_lines.append(line)
+    if sql_lines:
+        return "; ".join(sql_lines)
 
     return FALLBACK_SQL
 
