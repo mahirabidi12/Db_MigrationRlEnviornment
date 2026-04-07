@@ -118,7 +118,7 @@ class MigrationEnvironment:
         if self._time_remaining() <= 0:
             self._done = True
             return self._build_observation(
-                last_result="Timeout — 30 minutes exceeded.",
+                last_result=f"Timeout — {self._timeout} seconds exceeded.",
                 last_error=True,
             )
 
@@ -168,7 +168,7 @@ class MigrationEnvironment:
             episode_id=self._episode_id,
             task_id=self.task.task_id if self.task else "",
             step_count=self._step_count,
-            timeout_seconds=self.task.timeout_seconds if self.task else 1800,
+            timeout_seconds=self._timeout if self._timeout else 86400,
             time_remaining=round(self._time_remaining(), 1),
             done=self._done,
             cumulative_reward=round(self._cumulative_reward, 4),
@@ -196,7 +196,7 @@ class MigrationEnvironment:
         )
         result["initial_score"] = self._initial_grader_score
         result["time_remaining"] = round(self._time_remaining(), 1)
-        result["timeout_seconds"] = self.task.timeout_seconds if self.task else 1800
+        result["timeout_seconds"] = self._timeout if self._timeout else 86400
         if self._last_reward_breakdown:
             result["last_reward_breakdown"] = self._last_reward_breakdown
         return result
@@ -240,7 +240,7 @@ class MigrationEnvironment:
             last_sql_result=last_result,
             last_sql_error=last_error,
             step_count=self._step_count,
-            timeout_seconds=self.task.timeout_seconds if self.task else 1800,
+            timeout_seconds=self._timeout if self._timeout else 86400,
             time_remaining=round(self._time_remaining(), 1),
             task_id=self.task.task_id if self.task else "",
             task_description=self.task.description if self.task else "",
