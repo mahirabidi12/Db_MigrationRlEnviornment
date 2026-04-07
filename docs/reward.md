@@ -1,140 +1,175 @@
-# Reward Function — Checklist-Delta with Mistake Penalties
+# Reward Function — Dense, Per-Step Feedback
 
-**Reward range: -1.0 to +1.0**
+## Overview
 
-The reward pipeline provides **dense feedback at every step**:
+The reward pipeline provides immediate feedback after every SQL statement, enabling fine-grained credit assignment. Rather than a single score at episode end, the agent receives a detailed reward breakdown at each step.
 
 ```
 step_reward = (grader_score_after - grader_score_before) - mistake_penalties
 ```
 
----
-
-## How It Works
-
-After every `step()`, the environment:
-
-1. Runs the full grader on the current DB state → gets `score_after`
-2. Computes `delta = score_after - score_before`
-3. Counts all structural mistakes and wrong data rows in the current DB
-4. Computes penalties for only the **NEW** mistakes introduced by this step (not pre-existing ones)
-5. Returns `total = delta - penalty`
-
-The reward can be **positive** (agent made progress), **negative** (agent broke something or introduced mistakes), or **zero** (no-op SQL like a SELECT).
+**Typical range:** -0.01 to +0.02 per step. Cumulative reward tracks total progress across the episode.
 
 ---
 
-## Penalty Categories
+## Architecture
 
-The code defines 9 distinct penalty types in `reward.py`:
+The reward system is implemented in `reward.py` with two core components:
 
-| Penalty Type | Amount | Triggered When |
-|---|---|---|
-| `junk_table` | 0.005 | Agent created a table that doesn't exist in the target schema |
-| `junk_column` | 0.002 | Agent added a column that doesn't exist in the target |
-| `junk_fk` | 0.002 | Agent added a foreign key not in the target |
-| `wrong_type` | 0.001 | Column exists but has the wrong data type |
-| `wrong_notnull` | 0.001 | Column exists but NOT NULL constraint is wrong |
-| `wrong_default` | 0.001 | Column exists but DEFAULT value is wrong |
-| `wrong_pk` | 0.001 | Column exists but PRIMARY KEY flag is missing |
-| `wrong_data` | 0.0005 | A row in a target table doesn't match any expected row |
-| `sql_error` | 0.001 | The SQL statement failed to execute |
+### RewardState
 
-### Only NEW mistakes are penalized
+Maintained across the episode. Initialized at `reset()` by running the grader on the initial database.
 
-The environment tracks `prev_mistakes` and `prev_wrong_data` from the previous step. Only the **difference** is penalized:
-
+```python
+@dataclass
+class RewardState:
+    prev_score: float        # Last grader score (0.0 to 1.0)
+    prev_checks_passed: int  # Last passing check count
+    prev_checks_total: int   # Total checks (constant per episode)
+    prev_mistakes: int       # Structural mistake count after last step
+    prev_wrong_data: int     # Wrong data row count after last step
+    step: int                # Current step number
 ```
+
+### RewardBreakdown
+
+Returned by `compute_step_reward()` after every step:
+
+```python
+@dataclass
+class RewardBreakdown:
+    score_before: float          # Grader score before this step
+    score_after: float           # Grader score after this step
+    checks_passed_before: int
+    checks_passed_after: int
+    checks_total: int
+    new_checks_passed: int       # Delta (can be negative on regression)
+    delta: float                 # score_after - score_before
+    mistake_penalty: float       # Always <= 0
+    mistake_details: str         # Human-readable description
+    total: float                 # delta - penalty = final step reward
+```
+
+Available to the agent in `metadata.reward_breakdown` on every observation.
+
+---
+
+## Computation Pipeline
+
+After every `step()`, `compute_step_reward()` executes:
+
+1. **Run full grader** on current database → `score_after`, `checks_after`
+2. **Compute delta** → `score_after - prev_score`
+3. **Count structural mistakes** via `_count_mistakes()` → junk tables, junk columns, wrong types, wrong constraints, junk FKs
+4. **Count wrong data rows** via `_count_wrong_data()` → rows in target tables that don't match expected data
+5. **Compute penalties for NEW mistakes only** → `max(0, mistakes_now - prev_mistakes)`
+6. **Add SQL error penalty** if the statement failed
+7. **Return breakdown** → `total = delta - penalty`
+8. **Update RewardState** for next step
+
+---
+
+## Penalty Schedule
+
+Defined in the `PENALTIES` dictionary:
+
+| Category | Penalty Type | Amount per instance | Trigger condition |
+|---|---|---|---|
+| **Structural** | `junk_table` | -0.005 | Table created that exists in neither target nor initial schema |
+| **Structural** | `junk_column` | -0.002 | Column in a target table that doesn't exist in the target specification |
+| **Structural** | `junk_fk` | -0.002 | Foreign key on a target table that isn't in the target specification |
+| **Constraint** | `wrong_type` | -0.001 | Column exists but type doesn't match (after normalization) |
+| **Constraint** | `wrong_notnull` | -0.001 | Target says NOT NULL, current column allows NULL |
+| **Constraint** | `wrong_default` | -0.001 | DEFAULT value doesn't match (after normalization) |
+| **Constraint** | `wrong_pk` | -0.001 | Target says PRIMARY KEY, current column isn't PK |
+| **Data** | `wrong_data` | -0.0005 per row | Row in current DB doesn't match any expected target row |
+| **Execution** | `sql_error` | -0.001 flat | SQL statement failed to execute |
+
+**Note:** The actual penalty computation uses a flat `0.002` per structural mistake rather than looking up individual penalty values from the dictionary. Data penalties use `0.0005` per wrong row as specified.
+
+### Delta-Based Penalty Model
+
+Only **new** mistakes are penalized each step:
+
+```python
 new_mistakes = max(0, mistakes_now - prev_mistakes)
 new_wrong_data = max(0, wrong_data_now - prev_wrong_data)
 penalty = new_mistakes * 0.002 + new_wrong_data * 0.0005 + (0.001 if sql_error)
 ```
 
-This means:
-- If the agent creates a junk table on step 5, it gets penalized once on step 5
-- On step 6, that junk table still exists but is NOT penalized again
-- If the agent drops the junk table on step 7, `mistakes_now` decreases — no penalty, and the delta improves
-
----
-
-## Mistake Detection — `_count_mistakes()`
-
-The reward function inspects the current DB and counts structural violations:
-
-- **Junk tables** — any table that's not in the target schema AND not in the initial schema (tables from the initial schema that haven't been dropped yet are not mistakes — they're just "not done yet")
-- **Junk columns** — columns in a target table that don't exist in the target's column list
-- **Wrong types** — column exists but type doesn't match (after normalization: `INT` = `INTEGER`, etc.)
-- **Missing NOT NULL** — target says NOT NULL, current doesn't have it
-- **Missing PK** — target says PRIMARY KEY, current doesn't have it
-- **Wrong DEFAULT** — target has a DEFAULT value, current has a different one (after normalization)
-- **Junk FKs** — foreign keys on a target table that don't exist in the target FK list
-
-Details are capped at 10 items per step in the breakdown string to keep it readable.
-
----
-
-## Wrong Data Detection — `_count_wrong_data()`
-
-For every table in the target schema, the function:
-
-1. Gets all rows from the current DB and target DB for that table
-2. Builds a **multiset** of target rows (handles duplicate rows correctly)
-3. For each row in the current DB, checks if it matches any remaining target row
-4. Rows that don't match anything = wrong data
-
-Row matching uses `_normalize_value()` which handles:
-- Integer/float equivalence (`1` matches `1.0`)
-- NULL handling
-- String normalization
-
----
-
-## RewardBreakdown — What Gets Returned
-
-Every step returns a `RewardBreakdown` with these fields:
-
-| Field | Type | Description |
+| Step | Event | Penalty |
 |---|---|---|
-| `score_before` | float | Grader score before this step (0.0–1.0) |
-| `score_after` | float | Grader score after this step (0.0–1.0) |
-| `checks_passed_before` | int | Number of grader checks passing before |
-| `checks_passed_after` | int | Number of grader checks passing after |
-| `checks_total` | int | Total number of grader checks |
-| `new_checks_passed` | int | Delta: `checks_after - checks_before` (can be negative) |
-| `delta` | float | Raw score change: `score_after - score_before` |
-| `mistake_penalty` | float | Penalty applied this step (always <= 0) |
-| `mistake_details` | str | Human-readable list of new mistakes |
-| `total` | float | Final step reward: `delta - penalty` |
+| Step 5 | Agent creates a junk table | -0.002 (penalized once) |
+| Step 6 | Junk table still exists | 0.0 (not re-penalized) |
+| Step 7 | Agent drops the junk table | 0.0 (mistake count decreases, no penalty) |
 
-This breakdown is available in the observation at `metadata.reward_breakdown`.
+---
 
-### Example breakdown
+## Mistake Detection
 
-Agent creates a correct table with 3 columns, passing 7 new checks out of 1,468 total:
+### `_count_mistakes()` — Structural Inspection
 
+Iterates over all tables in the current database and counts:
+
+| Mistake | Detection logic |
+|---|---|
+| Junk table | Table name not in target schema AND not in initial schema. (Initial tables that haven't been dropped yet are not penalized — they're just "not done yet") |
+| Junk column | Column exists in a target table but isn't in the target's column list |
+| Wrong type | Column exists, types don't match after `_normalize_type()` (`INT` = `INTEGER`, `BOOL` = `INTEGER`, etc.) |
+| Missing NOT NULL | Target column has `notnull=True`, current column doesn't |
+| Missing PK | Target column has `is_pk=True`, current column doesn't |
+| Wrong DEFAULT | Target column has a DEFAULT, current column has a different value after `_normalize_default()` |
+| Junk FK | Foreign key exists on a target table but isn't in the target's FK set |
+
+Returns `(total_mistakes, details_string)`. Details are capped at 10 items for readability.
+
+### `_count_wrong_data()` — Row-Level Data Inspection
+
+For every table in the target schema:
+
+1. Retrieve all rows from both current and target databases
+2. Build a target **multiset** (handles duplicate rows)
+3. For each row in the current database, check if it matches any remaining target row using `_normalize_value()`
+4. Rows that don't match = wrong data
+
+Value normalization handles integer/float equivalence (`1` = `1.0`), float rounding to 2 decimal places, and NULL-safe comparison.
+
+---
+
+## Initialization
+
+`init_reward_state()` is called at episode reset:
+
+1. Runs the full grader on the initial database to get the starting score
+2. Counts pre-existing structural mistakes
+3. Returns a `RewardState` with these as the baseline
+
+This ensures the agent is never penalized for the starting state. In our acquisition-themed tasks, the initial score is always 0.0 (zero table name overlap), and pre-existing mistakes are 0 (no junk tables at start).
+
+---
+
+## Examples
+
+**Positive reward — agent creates a correct table:**
 ```json
 {
-  "score_before": 0.10014,
-  "score_after": 0.10491,
+  "score_before": 0.1001,
+  "score_after": 0.1049,
   "checks_before": 147,
   "checks_after": 154,
   "checks_total": 1468,
   "new_checks_passed": 7,
-  "delta": 0.00477,
+  "delta": 0.0048,
   "mistake_penalty": 0.0,
-  "total": 0.00477
+  "total": 0.0048
 }
 ```
 
-Agent runs a bad INSERT that introduces 3 wrong data rows:
-
+**Mixed reward — progress with data errors:**
 ```json
 {
-  "score_before": 0.45,
+  "score_before": 0.450,
   "score_after": 0.452,
-  "checks_before": 661,
-  "checks_after": 664,
-  "checks_total": 1468,
   "new_checks_passed": 3,
   "delta": 0.002,
   "mistake_penalty": -0.0015,
@@ -143,15 +178,11 @@ Agent runs a bad INSERT that introduces 3 wrong data rows:
 }
 ```
 
-Agent runs invalid SQL:
-
+**Negative reward — SQL failure:**
 ```json
 {
-  "score_before": 0.45,
-  "score_after": 0.45,
-  "checks_before": 661,
-  "checks_after": 661,
-  "checks_total": 1468,
+  "score_before": 0.450,
+  "score_after": 0.450,
   "new_checks_passed": 0,
   "delta": 0.0,
   "mistake_penalty": -0.001,
@@ -160,31 +191,28 @@ Agent runs invalid SQL:
 }
 ```
 
+**Regression — agent drops a table it already built:**
+```json
+{
+  "score_before": 0.452,
+  "score_after": 0.440,
+  "new_checks_passed": -18,
+  "delta": -0.012,
+  "mistake_penalty": 0.0,
+  "total": -0.012
+}
+```
+
 ---
 
-## RewardState — Tracking Across Steps
+## Design Principles
 
-The environment maintains a `RewardState` object across the episode:
-
-| Field | Purpose |
+| Principle | Implementation |
 |---|---|
-| `prev_score` | Last grader score — used to compute delta |
-| `prev_checks_passed` | Last checks passed count |
-| `prev_checks_total` | Total checks (stays constant within an episode) |
-| `prev_mistakes` | Structural mistake count after last step |
-| `prev_wrong_data` | Wrong data row count after last step |
-| `step` | Current step number |
-
-This state is initialized at `reset()` by running the grader on the initial DB and counting pre-existing mistakes. This ensures the agent is never penalized for the starting state.
-
----
-
-## Design Properties
-
-- **Dense gradient**: Every step has meaningful signal — not sparse end-of-episode
-- **Progress-aware**: Positive reward for passing new checks, negative for regression
-- **Only penalizes NEW mistakes**: Tracks previous state so pre-existing issues don't get re-penalized
-- **Cumulative tracking**: `metadata.cumulative_reward` tracks total reward across the episode
-- **Detailed breakdown**: Each step includes `metadata.reward_breakdown` with full details
-- **No double-counting**: A junk table created on step 5 is penalized once, not every subsequent step
-- **Regression-sensitive**: If the agent drops a table it already built correctly, `delta` goes negative
+| **Dense signal** | Every step gets a meaningful reward — not sparse end-of-episode |
+| **Progress-aware** | Positive delta for new checks, negative delta for regression |
+| **No double-counting** | Delta-based penalties charge each new mistake exactly once |
+| **Regression-sensitive** | Dropping a correctly-built table immediately produces negative delta |
+| **Transparent** | `mistake_details` explains every penalty in human-readable text |
+| **Cumulative tracking** | `metadata.cumulative_reward` provides running total across the episode |
+| **Consistent with grader** | Reward delta is derived directly from the same grader that produces the final score |
