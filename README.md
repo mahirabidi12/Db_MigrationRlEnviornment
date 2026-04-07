@@ -165,27 +165,125 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 | `/mcp` | POST | MCP JSON-RPC compatibility |
 | `/ws` | WebSocket | WebSocket session |
 
-## Benchmark Results (GPT-5.4, 6-minute timeout)
+## Baseline Scores
 
-| Task | Score | Checks Passed | Cumulative Reward |
-|---|---|---|---|
-| Easy (Hospital) | **82.1%** | 1,377 / 1,677 | +0.8186 |
-| Medium (Instagram) | **87.0%** | 1,277 / 1,468 | +0.8469 |
-| Hard (ShopLocal) | **49.1%** | 1,148 / 2,336 | +0.4039 |
+Scores from running `inference.py` with Nemotron 3 Super 120B (20 min timeout):
 
-## Quick Start
+| Task | Score | Checks Passed | Steps | Errors |
+|---|---|---|---|---|
+| Easy (Hospital) | **38.9%** | 643 / 1,655 | 18 | 0 |
+| Medium (Instagram) | **28.9%** | 424 / 1,468 | 16 | 3 |
+| Hard (ShopLocal) | **3.1%** | 72 / 2,336 | 11 | 1 |
+| **Average** | **23.6%** | | | |
+
+Nemotron averages ~30s per response, yielding 11-18 steps per task. The environment is designed to be challenging — even with correct schema creation, the agent runs out of time before completing data migration and legacy table drops. Faster models (GPT-5.4) score significantly higher with the same time budget.
+
+## Setup
+
+### Prerequisites
+
+- Python 3.11+
+- An LLM API key (OpenAI, HuggingFace, NVIDIA, or any OpenAI-compatible endpoint)
+
+### Installation
 
 ```bash
-# Install
+git clone https://github.com/mahirabidi12/Db_MigrationRlEnviornment.git
+cd Db_MigrationRlEnviornment
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# Run server
-uvicorn db_migration_env.server.app:app --port 8000
-
-# Run baseline inference (all 3 tasks)
-API_BASE_URL=https://router.huggingface.co/v1 MODEL_NAME=Qwen/Qwen2.5-72B-Instruct HF_TOKEN=your_token python inference.py
 ```
 
-## Deployed Space
+### Verify Installation
 
-[https://huggingface.co/spaces/techsas/db-migration-env](https://huggingface.co/spaces/techsas/db-migration-env)
+```bash
+python -c "from db_migration_env.tasks.registry import list_tasks; [print(t['task_id']) for t in list_tasks()]"
+```
+
+Expected output:
+```
+easy_hospital_migration
+medium_instagram_migration
+hard_shoplocal_formulas
+```
+
+## Usage
+
+### Option 1: Run Baseline Inference (how judges evaluate)
+
+Runs all 3 tasks sequentially with 6.2 min per task:
+
+```bash
+API_BASE_URL=https://integrate.api.nvidia.com/v1 \
+MODEL_NAME=nvidia/nemotron-3-super-120b-a12b \
+HF_TOKEN=your_token \
+python inference.py
+```
+
+Output follows the mandatory `[START]`/`[STEP]`/`[END]` format per task, with a summary at the end.
+
+### Option 2: Run via API Endpoints (how agents interact)
+
+Start the server:
+
+```bash
+uvicorn db_migration_env.server.app:app --port 8000
+```
+
+Then interact via HTTP:
+
+```bash
+# Reset — start a new episode
+curl -X POST http://localhost:8000/reset \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "easy_hospital_migration"}'
+
+# Step — execute SQL
+curl -X POST http://localhost:8000/step \
+  -H "Content-Type: application/json" \
+  -d '{"sql": "CREATE TABLE patients (id INTEGER PRIMARY KEY, first_name TEXT NOT NULL)"}'
+
+# Grade — get detailed evaluation
+curl -X POST http://localhost:8000/grader
+
+# List tasks
+curl http://localhost:8000/tasks
+
+# Health check
+curl http://localhost:8000/health
+```
+
+### Option 3: Use the Deployed HF Space
+
+The environment is live at [https://techsas-db-migration-env.hf.space](https://techsas-db-migration-env.hf.space). Same API endpoints — just replace `localhost:8000` with the Space URL.
+
+```bash
+curl https://techsas-db-migration-env.hf.space/health
+```
+
+## Project Structure
+
+```
+.
+├── inference.py                  # Baseline inference script (judges run this)
+├── openenv.yaml                  # OpenEnv manifest
+├── db_migration_env/
+│   ├── server/
+│   │   ├── app.py                # FastAPI server (all endpoints)
+│   │   └── environment.py        # Core environment (reset/step/grade)
+│   ├── graders/
+│   │   └── migration_grader.py   # Checklist grader (1,400-2,300 checks)
+│   ├── reward.py                 # Reward pipeline (delta + penalties)
+│   ├── db_engine.py              # SQLite engine + schema introspection
+│   ├── models.py                 # Pydantic models (Action, Observation, State)
+│   └── tasks/
+│       ├── task_easy.py           # Hospital migration (31→41 tables)
+│       ├── task_medium.py         # Instagram migration (25→44 tables)
+│       └── task_hard.py           # E-commerce migration (35→55 tables)
+├── docs/
+│   ├── grader.md                 # Grader documentation
+│   ├── reward.md                 # Reward function documentation
+│   └── task_desc.md              # Detailed task descriptions
+└── agent_run/                    # Test agent scripts and logs
+```
