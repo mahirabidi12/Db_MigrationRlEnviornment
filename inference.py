@@ -275,6 +275,8 @@ def run_task(task_id: str, client: OpenAI) -> dict:
 
             # Mandatory [STEP] log
             error_str = obs.last_sql_result if obs.last_sql_error else None
+            if error_str and "Timeout" in error_str:
+                error_str = "timeout"
             log_step(
                 step=step,
                 action=sql.replace("\n", " ")[:200],
@@ -326,6 +328,9 @@ def main() -> None:
     task_ids = list(TASK_REGISTRY.keys())
     all_results = {}
 
+    import time as _time
+    global_start = _time.time()
+
     for task_id in task_ids:
         try:
             grade = run_task(task_id, client)
@@ -333,6 +338,8 @@ def main() -> None:
         except Exception as e:
             print(f"\n  FAILED: {e}")
             all_results[task_id] = {"total_score": 0.0, "error": str(e)}
+
+    total_elapsed = _time.time() - global_start
 
     # Summary
     print(f"\n{'='*60}")
@@ -345,6 +352,7 @@ def main() -> None:
     scores = [r.get("total_score", 0.0) for r in all_results.values()]
     avg = sum(scores) / max(len(scores), 1)
     print(f"\n  {'Average':40s} {avg:.4f}")
+    print(f"\n  Total time: {total_elapsed:.1f}s")
 
 
 if __name__ == "__main__":
