@@ -223,7 +223,7 @@ hard_shoplocal_formulas
 
 ### Option 1: Run Baseline Inference (how judges evaluate)
 
-Runs all 3 tasks sequentially with 6.2 min per task:
+Runs all 3 tasks sequentially with 20 min timeout:
 
 ```bash
 API_BASE_URL=https://integrate.api.nvidia.com/v1 \
