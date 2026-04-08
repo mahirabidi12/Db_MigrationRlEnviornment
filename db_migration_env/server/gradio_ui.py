@@ -46,9 +46,11 @@ def _format_schema_md(schema, label: str) -> str:
     return "\n".join(lines)
 
 
-def _format_diff_md(diffs) -> str:
+def _format_diff_md(diffs, hidden: bool = False) -> str:
     if not diffs:
-        return "**No differences - migration complete!**"
+        if hidden:
+            return "**Narrative mode** — target schema is hidden. The migration spec is embedded in the task description above."
+        return "**No differences — migration complete!**"
     lines = ["| Category | Table | Detail |", "|----------|-------|--------|"]
     for d in diffs:
         cat_emoji = {
@@ -97,7 +99,7 @@ def reset_env(task_id: str):
     task = TASK_REGISTRY[task_id]
     current_md = _format_schema_md(obs.current_schema, "Current Schema")
     target_md = _format_schema_md(obs.target_schema, "Target Schema")
-    diff_md = _format_diff_md(obs.schema_diff)
+    diff_md = _format_diff_md(obs.schema_diff, hidden=not obs.target_schema.tables)
     grade = env.grade()
     grade_md = _format_grade_md(grade)
 
@@ -121,7 +123,7 @@ def step_env(sql: str, history: str):
 
     obs = env.step(MigrationAction(sql=sql.strip()))
     current_md = _format_schema_md(obs.current_schema, "Current Schema")
-    diff_md = _format_diff_md(obs.schema_diff)
+    diff_md = _format_diff_md(obs.schema_diff, hidden=not obs.target_schema.tables)
     grade = env.grade()
     grade_md = _format_grade_md(grade)
 
@@ -148,10 +150,9 @@ def build_gradio_app():
         gr.Markdown("""
 # DB Migration RL Environment
 
-An **OpenEnv-compliant** RL environment where AI agents learn to migrate databases using SQL.
-Select a task, then execute SQL statements one at a time to transform the source database into the target schema + data.
+A production-scale RL environment for database migration. Legacy schemas with email references, zero foreign keys, and abbreviated column names must be transformed into enterprise-grade schemas — all through SQL — single or multi-statement per step. Every step is graded against 1,400-2,300+ binary checks covering schema structure, referential integrity, constraints, and row-level data accuracy. Dense per-step rewards guide the agent toward the target.
 
-**Tasks**: Easy (31→41 tables) | Medium (25→44 tables) | Hard (35→55 tables) — narrative mode, all target schemas hidden
+**Tasks**: Easy (31→41 tables) | Medium (25→44 tables) | Hard (35→55 tables) — narrative mode, target schemas hidden
         """)
 
         with gr.Row():
