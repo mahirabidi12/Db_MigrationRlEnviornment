@@ -33,7 +33,7 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 TEMPERATURE = 0.0
-MAX_TOKENS = 1024
+MAX_TOKENS = 4096
 FALLBACK_SQL = "SELECT name FROM sqlite_master WHERE type='table'"
 BENCHMARK = "db-migration-env"
 

@@ -178,16 +178,16 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 
 ## Baseline Scores
 
-Scores from running `inference.py` with Nemotron 3 Super 120B (20 min timeout):
+Scores from running `inference.py` with Nemotron 3 Super 120B (20 mins timeout). Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
 
 | Task | Score | Checks Passed | Cumulative Reward | Steps |
 |---|---|---|---|---|
-| Easy (Hospital) | **38.9%** | 643 / 1,655 | +0.3885 | 18 |
-| Medium (Instagram) | **28.9%** | 424 / 1,468 | +0.2888 | 16 |
-| Hard (ShopLocal) | **3.1%** | 72 / 2,336 | +0.0308 | 11 |
-| **Average** | **23.6%** | | **+0.2360** | |
+| Easy (Hospital) | **20.8%** | 342 / 1,647 | +0.2077 | 10 |
+| Medium (Instagram) | **24.3%** | 357 / 1,468 | +0.2432 | 20 |
+| Hard (ShopLocal) | **3.1%** | 72 / 2,336 | +0.0308 | 5 |
+| **Average** | **16.1%** | | **+0.1606** | |
 
-Nemotron averages ~30s per response, yielding 11-18 steps per task. The environment is designed to be challenging — even with correct schema creation, the agent runs out of time before completing data migration and legacy table drops. Faster models (GPT-5.4) score significantly higher with the same time budget.
+Nemotron averages ~30-60s per response, yielding 5-20 steps per task. The environment is designed to be challenging — even with correct schema creation, the agent runs out of time before completing data migration and legacy table drops.
 
 ## Setup
 
