@@ -15,13 +15,13 @@ from db_migration_env.models import MigrationAction
 from db_migration_env.server.environment import MigrationEnvironment
 from db_migration_env.tasks.registry import TASK_REGISTRY, list_tasks
 
-# Global env per Gradio session (simplification — Gradio handles state)
+# Global env per Gradio session — recreated on reset to avoid SQLite thread issues
 _demo_env: Optional[MigrationEnvironment] = None
 
 
-def _get_env() -> MigrationEnvironment:
+def _get_env(force_new: bool = False) -> MigrationEnvironment:
     global _demo_env
-    if _demo_env is None:
+    if _demo_env is None or force_new:
         _demo_env = MigrationEnvironment()
     return _demo_env
 
@@ -91,7 +91,7 @@ Steps: **{steps}** | Errors: **{errors}**"""
 
 def reset_env(task_id: str):
     """Reset the environment with the selected task."""
-    env = _get_env()
+    env = _get_env(force_new=True)
     obs = env.reset(task_id=task_id)
 
     task = TASK_REGISTRY[task_id]
