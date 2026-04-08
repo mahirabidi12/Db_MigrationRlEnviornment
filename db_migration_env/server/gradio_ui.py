@@ -67,28 +67,26 @@ def _format_diff_md(diffs) -> str:
 
 def _format_grade_md(grade: dict) -> str:
     total = grade.get("total_score", 0)
-    schema = grade.get("schema_score", 0)
-    data = grade.get("data_score", 0)
-    eff = grade.get("efficiency_score", 0)
+    passed = grade.get("checks_passed", 0)
+    total_checks = grade.get("checks_total", 0)
     steps = grade.get("steps_taken", 0)
-    max_s = grade.get("max_steps", 0)
     errors = grade.get("error_count", 0)
 
     bar_total = int(total * 20) * "=" + int((1 - total) * 20) * "-"
-    bar_schema = int(schema * 20) * "=" + int((1 - schema) * 20) * "-"
-    bar_data = int(data * 20) * "=" + int((1 - data) * 20) * "-"
-    bar_eff = int(eff * 20) * "=" + int((1 - eff) * 20) * "-"
 
-    return f"""## Score: **{total:.4f}** / 1.0
+    summary_lines = ""
+    for ctype, counts in grade.get("summary", {}).items():
+        p, t = counts["passed"], counts["total"]
+        summary_lines += f"| `{ctype}` | {p} / {t} |\n"
 
-| Metric | Score | Bar |
-|--------|------:|-----|
-| **Total** | **{total:.4f}** | `[{bar_total}]` |
-| Schema (40%) | {schema:.4f} | `[{bar_schema}]` |
-| Data (45%) | {data:.4f} | `[{bar_data}]` |
-| Efficiency (15%) | {eff:.4f} | `[{bar_eff}]` |
+    return f"""## Score: **{total:.4f}** ({passed}/{total_checks} checks)
 
-Steps: **{steps}** / {max_s} | Errors: **{errors}**"""
+`[{bar_total}]`
+
+| Check Type | Passed |
+|---|---|
+{summary_lines}
+Steps: **{steps}** | Errors: **{errors}**"""
 
 
 def reset_env(task_id: str):
@@ -103,7 +101,7 @@ def reset_env(task_id: str):
     grade = env.grade()
     grade_md = _format_grade_md(grade)
 
-    status = f"**Episode started** | Task: `{task_id}` ({task.difficulty}) | Max steps: {task.max_steps}"
+    status = f"**Episode started** | Task: `{task_id}` ({task.difficulty})"
     history = ""
 
     return current_md, target_md, diff_md, grade_md, status, history, ""
@@ -137,7 +135,7 @@ def step_env(sql: str, history: str):
     if obs.done:
         status = f"**Episode COMPLETE** | Final score: **{grade['total_score']:.4f}**"
     else:
-        status = f"Step {obs.step_count}/{obs.max_steps} | Cumulative reward: {obs.metadata.get('cumulative_reward', 0):.4f}"
+        status = f"Step {obs.step_count} | Cumulative reward: {obs.metadata.get('cumulative_reward', 0):.4f}"
 
     return current_md, diff_md, grade_md, status, new_history
 
@@ -153,7 +151,7 @@ def build_gradio_app():
 An **OpenEnv-compliant** RL environment where AI agents learn to migrate databases using SQL.
 Select a task, then execute SQL statements one at a time to transform the source database into the target schema + data.
 
-**Tasks**: Easy (3 tables) | Medium (5 tables) | Hard (7 tables) — with deduplication, computed columns, FK chains
+**Tasks**: Easy (31→41 tables) | Medium (25→44 tables) | Hard (35→55 tables) — narrative mode, all target schemas hidden
         """)
 
         with gr.Row():
