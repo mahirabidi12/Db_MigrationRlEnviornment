@@ -169,7 +169,7 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 
 | Feature | Endpoint |
 |---|---|
-| Gradio Web UI | [`/`](https://techsas-db-migration-env.hf.space/) |
+| Gradio Web UI | [`/ui`](https://techsas-db-migration-env.hf.space/ui/) |
 | MCP Interface | `POST /mcp` |
 | WebSocket | `/ws` |
 | Concurrent Sessions | via `session_id` param |

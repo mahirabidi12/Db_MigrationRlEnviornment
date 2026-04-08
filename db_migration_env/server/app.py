@@ -92,12 +92,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Mount Gradio UI at root
+# Mount Gradio UI at /ui
 try:
     import gradio as gr
     from db_migration_env.server.gradio_ui import build_gradio_app
     _gradio_app = build_gradio_app()
-    app = gr.mount_gradio_app(app, _gradio_app, path="/")
+    app = gr.mount_gradio_app(app, _gradio_app, path="/ui")
 except ImportError:
     pass  # Gradio optional — API still works without it
 
