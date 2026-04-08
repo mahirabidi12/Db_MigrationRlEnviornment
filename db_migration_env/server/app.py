@@ -103,6 +103,46 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# Root — environment overview
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+async def root():
+    return {
+        "name": "db-migration-env",
+        "version": "1.0.0",
+        "description": "A production-scale RL environment for database migration. Legacy schemas with email references, "
+                       "zero foreign keys, and abbreviated column names must be transformed into enterprise-grade schemas "
+                       "— all through SQL. Every step is graded against 1,400-2,300+ binary checks covering schema structure, "
+                       "referential integrity, constraints, and row-level data accuracy.",
+        "tasks": {
+            "easy_hospital_migration": "HealthFirst Clinic → MedCore: 31 hc_* tables → 41 enterprise tables (1,635+ checks)",
+            "medium_instagram_migration": "Facebook → Instagram-style unified schema: 25 fb_* tables → 44 tables (1,468 checks)",
+            "hard_shoplocal_formulas": "ShopLocal → NexGenMart: 35 sl_* tables → 55 enterprise tables (2,336 checks)",
+        },
+        "features": [
+            "Narrative mode — target schema hidden, described in 30K+ char natural-language spec",
+            "Dense per-step rewards with checklist-delta + mistake penalties",
+            "10 grader check types: table_exists, column_exists, column_type, nullable, pk, default, fk, index, table_removed, data_row",
+            "Multi-statement SQL support, concurrent sessions, MCP + WebSocket interfaces",
+        ],
+        "endpoints": {
+            "interactive_ui": "/ui",
+            "health": "/health",
+            "tasks": "/tasks",
+            "reset": "POST /reset",
+            "step": "POST /step",
+            "grader": "POST /grader",
+            "state": "/state",
+            "metadata": "/metadata",
+            "schema": "/schema",
+            "mcp": "POST /mcp",
+            "ws": "WebSocket /ws",
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Standard OpenEnv endpoints
 # ---------------------------------------------------------------------------
 
