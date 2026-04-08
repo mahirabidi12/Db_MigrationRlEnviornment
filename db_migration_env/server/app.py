@@ -52,6 +52,8 @@ class StepRequest(BaseModel):
 
 class ResetResponse(BaseModel):
     observation: MigrationObservation
+    reward: Optional[float] = None
+    done: bool = False
 
 
 class StepResponse(BaseModel):

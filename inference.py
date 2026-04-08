@@ -354,6 +354,18 @@ def main() -> None:
     print(f"\n  {'Average':40s} {avg:.4f}")
     print(f"\n  Total time: {total_elapsed:.1f}s")
 
+    # Save results to outputs/
+    os.makedirs("outputs", exist_ok=True)
+    output = {
+        "model": MODEL_NAME,
+        "total_time_seconds": round(total_elapsed, 1),
+        "average_score": round(avg, 4),
+        "results": {tid: {"total_score": r.get("total_score", 0.0), "checks_passed": r.get("checks_passed", 0), "checks_total": r.get("checks_total", 0)} for tid, r in all_results.items()},
+    }
+    with open("outputs/baseline_results.json", "w") as f:
+        json.dump(output, f, indent=2)
+    print(f"\n  Results saved to outputs/baseline_results.json")
+
 
 if __name__ == "__main__":
     main()

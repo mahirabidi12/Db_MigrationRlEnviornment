@@ -134,7 +134,7 @@ For full task descriptions, schemas, and migration challenges, see [task_desc.md
 
 ## Grading
 
-Every check is worth exactly 1 point. Score = checks passed / total checks.
+Every check is worth exactly 1 point. Score = checks passed / total checks. Tasks have 1,468 to 2,336 checks each.
 
 **10 check types:** table_exists, column_exists, column_type_correct, column_nullable_correct, column_primary_key_correct, column_default_correct, fk_exists, index_exists, table_removed, data_row_correct.
 
