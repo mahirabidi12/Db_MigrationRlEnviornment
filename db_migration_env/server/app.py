@@ -97,7 +97,7 @@ try:
     import gradio as gr
     from db_migration_env.server.gradio_ui import build_gradio_app
     _gradio_app = build_gradio_app()
-    app = gr.mount_gradio_app(app, _gradio_app, path="/ui")
+    app = gr.mount_gradio_app(app, _gradio_app, path="/")
 except ImportError:
     pass  # Gradio optional — API still works without it
 
