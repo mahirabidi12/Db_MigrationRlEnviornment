@@ -165,6 +165,17 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 | `/mcp` | POST | MCP JSON-RPC compatibility |
 | `/ws` | WebSocket | WebSocket session |
 
+## Additional Features
+
+| Feature | Endpoint |
+|---|---|
+| Gradio Web UI | [`/ui`](https://techsas-db-migration-env.hf.space/ui/) |
+| MCP Interface | `POST /mcp` |
+| WebSocket | `/ws` |
+| Concurrent Sessions | via `session_id` param |
+| Narrative Mode | Target schema hidden — agent reads a 30K+ char natural-language spec instead |
+| 3 Difficulty Levels | easy → medium → hard |
+
 ## Baseline Scores
 
 Scores from running `inference.py` with Nemotron 3 Super 120B (20 min timeout):
