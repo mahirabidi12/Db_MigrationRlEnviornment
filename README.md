@@ -221,7 +221,7 @@ hard_shoplocal_formulas
 
 ## Usage
 
-### Option 1: Run Baseline Inference (how judges evaluate)
+### Option 1: Run Baseline Inference
 
 Runs all 3 tasks sequentially with 20 min timeout:
 
@@ -265,7 +265,24 @@ curl http://localhost:8000/tasks
 curl http://localhost:8000/health
 ```
 
-### Option 3: Use the Deployed HF Space
+### Option 3: Run via Docker
+
+```bash
+# Build
+docker build -t db-migration-env .
+
+# Run the server
+docker run -p 8000:8000 db-migration-env
+
+# Run inference inside the container
+docker run --rm \
+  -e API_BASE_URL=https://integrate.api.nvidia.com/v1 \
+  -e MODEL_NAME=nvidia/nemotron-3-super-120b-a12b \
+  -e HF_TOKEN=your_token \
+  db-migration-env python -u inference.py
+```
+
+### Option 4: Use the Deployed HF Space
 
 The environment is live at [https://techsas-db-migration-env.hf.space](https://techsas-db-migration-env.hf.space). Same API endpoints — just replace `localhost:8000` with the Space URL.
 
@@ -296,5 +313,6 @@ curl https://techsas-db-migration-env.hf.space/health
 │   ├── grader.md                 # Grader documentation
 │   ├── reward.md                 # Reward function documentation
 │   └── task_desc.md              # Detailed task descriptions
-└── agent_run/                    # Test agent scripts and logs
+└── outputs/
+    └── baseline_results.json     # Baseline scores from inference.py
 ```
