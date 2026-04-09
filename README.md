@@ -164,6 +164,7 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 | `/schema` | GET | Action/observation JSON schemas |
 | `/mcp` | POST | MCP JSON-RPC compatibility |
 | `/ws` | WebSocket | WebSocket session |
+| `/ui` | GET | Interactive Gradio web interface |
 
 ## Additional Features
 
