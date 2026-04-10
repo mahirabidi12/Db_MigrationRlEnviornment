@@ -1,6 +1,7 @@
 TASK_ID = "medium_instagram_migration"
 DIFFICULTY = "medium"
 TIMEOUT_SECONDS = 86400
+MAX_STEPS = 12
 
 TASK_DESCRIPTION = """
 Facebook → Instagram-style Unified Schema Migration

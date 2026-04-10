@@ -144,10 +144,12 @@ class MigrationEnvironment:
         self._cumulative_reward += step_reward
         self._last_reward_breakdown = breakdown.to_dict()
 
-        # Check termination: timeout or perfect score
+        # Check termination: timeout, perfect score, or max steps
         if self._time_remaining() <= 0:
             self._done = True
         elif self._reward_state.prev_score >= 0.99:
+            self._done = True
+        elif self.task and self.task.max_steps > 0 and self._step_count >= self.task.max_steps:
             self._done = True
 
         return self._build_observation(
@@ -190,7 +192,7 @@ class MigrationEnvironment:
             target_db=self.target_db,
             target_schema=self._target_schema,
             steps_taken=self._step_count,
-            max_steps=0,
+            max_steps=self.task.max_steps if self.task else 0,
             error_count=self._error_count,
             initial_schema=self._initial_schema,
         )

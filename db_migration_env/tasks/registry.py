@@ -14,6 +14,7 @@ class TaskDefinition:
     description: str
     difficulty: str
     timeout_seconds: int
+    max_steps: int
     initial_sql: str
     target_sql: str
 
@@ -24,6 +25,7 @@ def _load(mod) -> TaskDefinition:
         description=mod.TASK_DESCRIPTION,
         difficulty=mod.DIFFICULTY,
         timeout_seconds=mod.TIMEOUT_SECONDS,
+        max_steps=getattr(mod, "MAX_STEPS", 12),
         initial_sql=mod.INITIAL_SQL,
         target_sql=mod.TARGET_SQL,
     )
