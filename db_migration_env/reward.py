@@ -43,15 +43,15 @@ class RewardBreakdown:
 
     def to_dict(self) -> dict:
         d = {
-            "score_before": round(self.score_before, 5),
-            "score_after": round(self.score_after, 5),
+            "score_before": round(self.score_before, 2),
+            "score_after": round(self.score_after, 2),
             "checks_before": self.checks_passed_before,
             "checks_after": self.checks_passed_after,
             "checks_total": self.checks_total,
             "new_checks_passed": self.new_checks_passed,
-            "delta": round(self.delta, 5),
-            "mistake_penalty": round(self.mistake_penalty, 5),
-            "total": round(self.total, 5),
+            "delta": round(self.delta, 2),
+            "mistake_penalty": round(self.mistake_penalty, 2),
+            "total": round(self.total, 2),
         }
         if self.mistake_details:
             d["mistake_details"] = self.mistake_details
@@ -60,15 +60,15 @@ class RewardBreakdown:
 
 # Penalty per mistake type
 PENALTIES = {
-    "junk_table": 0.005,        # Table not in target
-    "junk_column": 0.002,       # Column not in target
-    "junk_fk": 0.002,           # FK not in target
-    "wrong_type": 0.001,        # Column exists but wrong type
-    "wrong_notnull": 0.001,     # Column exists but wrong NOT NULL
-    "wrong_default": 0.001,     # Column exists but wrong DEFAULT
-    "wrong_pk": 0.001,          # Column exists but missing PK
-    "wrong_data": 0.0005,       # Row inserted but doesn't match target
-    "sql_error": 0.001,         # SQL failed
+    "junk_table": 0.05,         # Table not in target
+    "junk_column": 0.02,        # Column not in target
+    "junk_fk": 0.02,            # FK not in target
+    "wrong_type": 0.01,         # Column exists but wrong type
+    "wrong_notnull": 0.01,      # Column exists but wrong NOT NULL
+    "wrong_default": 0.01,      # Column exists but wrong DEFAULT
+    "wrong_pk": 0.01,           # Column exists but missing PK
+    "wrong_data": 0.005,        # Row inserted but doesn't match target
+    "sql_error": 0.01,          # SQL failed
 }
 
 
@@ -257,7 +257,7 @@ def compute_step_reward(
     new_wrong_data = max(0, wrong_data - reward_state.prev_wrong_data)
 
     # Calculate penalty
-    penalty = new_mistakes * 0.002  # avg penalty per structural mistake
+    penalty = new_mistakes * 0.02  # avg penalty per structural mistake
     penalty += new_wrong_data * PENALTIES["wrong_data"]
     if not success:
         penalty += PENALTIES["sql_error"]

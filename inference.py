@@ -38,8 +38,6 @@ MAX_STEPS = 12
 FALLBACK_SQL = "SELECT name FROM sqlite_master WHERE type='table'"
 BENCHMARK = "db-migration-env"
 
-DEBUG = True
-
 
 # ---------------------------------------------------------------------------
 # Mandatory stdout logging helpers — [START], [STEP], [END]
@@ -52,13 +50,12 @@ def log_start(task: str, env: str, model: str) -> None:
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
-    print(f"[STEP] step={step} action={action} reward={reward:.4f} done={done_val} error={error_val}", flush=True)
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
 
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    success_val = str(success).lower()
-    rewards_str = ",".join(f"{r:.4f}" for r in rewards)
-    print(f"[END] success={success_val} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.2f} rewards={rewards_str}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +99,7 @@ If the migration is complete (all differences resolved, data matches), reply: DO
 
 def format_observation(obs: MigrationObservation, include_data_sample: bool = True, include_description: bool = True) -> str:
     lines = []
-    lines.append(f"=== Task: {obs.task_id} | Step {obs.step_count} | Time remaining: {obs.time_remaining:.0f}s ===")
+    lines.append(f"=== Task: {obs.task_id} | Step {obs.step_count} ===")
     if include_description:
         lines.append(f"Description: {obs.task_description}")
     lines.append("")
@@ -323,7 +320,7 @@ def main() -> None:
     if not HF_TOKEN:
         print("WARNING: No HF_TOKEN set. LLM calls may fail.")
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "none")
 
     task_ids = list(TASK_REGISTRY.keys())
     all_results = {}

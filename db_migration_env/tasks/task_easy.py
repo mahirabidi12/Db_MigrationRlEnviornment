@@ -1,6 +1,7 @@
 TASK_ID = "easy_hospital_migration"
 DIFFICULTY = "easy"
 TIMEOUT_SECONDS = 86400
+MAX_STEPS = 12
 
 TASK_DESCRIPTION = """
 HealthFirst Clinic → MedCore Enterprise Hospital Migration
