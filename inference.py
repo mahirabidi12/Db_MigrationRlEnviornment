@@ -272,8 +272,8 @@ def run_task(task_id: str, client: OpenAI) -> dict:
             step_reward = obs.reward if obs.reward is not None else 0.0
             rewards.append(step_reward)
 
-            # Mandatory [STEP] log
-            error_str = obs.last_sql_result if obs.last_sql_error else None
+            # Mandatory [STEP] log — sanitize newlines so the log stays single-line
+            error_str = obs.last_sql_result.replace("\n", " ")[:200] if obs.last_sql_error else None
             log_step(
                 step=step,
                 action=sql.replace("\n", " ")[:200],
@@ -294,12 +294,6 @@ def run_task(task_id: str, client: OpenAI) -> dict:
         grade = env.grade()
         score = grade.get("total_score", 0.0)
         success = score >= 0.85
-
-        print(f"\n  --- GRADE ---")
-        print(f"  Total:      {grade['total_score']}")
-        print(f"  Checks:     {grade.get('checks_passed', 0)}/{grade.get('checks_total', 0)}")
-        print(f"  Steps:      {grade.get('steps_taken', 0)}")
-        print(f"  Errors:     {grade.get('error_count', 0)}")
 
     except Exception as exc:
         grade = env.grade()
