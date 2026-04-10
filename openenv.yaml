@@ -15,6 +15,13 @@ action: MigrationAction
 observation: MigrationObservation
 state: MigrationState
 
+tags:
+  - openenv
+  - database
+  - sql
+  - migration
+  - rl-environment
+
 tasks:
   - id: easy_hospital_migration
     difficulty: easy

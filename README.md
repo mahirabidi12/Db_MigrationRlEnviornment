@@ -5,6 +5,13 @@ colorFrom: blue
 colorTo: purple
 sdk: docker
 app_port: 8000
+pinned: false
+tags:
+  - openenv
+  - database
+  - sql
+  - migration
+  - rl-environment
 ---
 
 # DB Migration RL Environment
