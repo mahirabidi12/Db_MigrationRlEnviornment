@@ -8,7 +8,7 @@ Facebook → Instagram-style Unified Schema Migration
 ======================================================
 
 Facebook's legacy database (5 tables, fb_ prefix, email/username/group-name refs, zero FKs)
-must be migrated into 8 Instagram-style tables. The polymorphic fb_likes table (post AND comment
+must be migrated into 10 Instagram-style tables. The polymorphic fb_likes table (post AND comment
 likes in one table) must be split into post_likes and comment_likes. A computed account_stats
 table must be derived. All 5 legacy tables must be dropped.
 
@@ -48,9 +48,19 @@ table must be derived. All 5 legacy tables must be dropped.
 3 rows from fb_group_members. id INTEGER PRIMARY KEY from gmid, community_id INTEGER NOT NULL FK→communities(id) resolved by joining gm_group_name against communities.name, account_id INTEGER NOT NULL FK→accounts(id) resolved by joining gm_user_email against accounts.email, role TEXT NOT NULL DEFAULT 'member' from gm_role, joined_at TEXT NOT NULL from gm_joined.
 
 ────────────────────────────────────────────────────────────────
- Table 8 / 8 : account_stats
+ Table 8 / 10 : account_stats
 ────────────────────────────────────────────────────────────────
 4 rows — one per account. id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL UNIQUE FK→accounts(id), total_posts INTEGER NOT NULL DEFAULT 0 computed as COUNT of media_posts for this account, total_likes_received INTEGER NOT NULL DEFAULT 0 computed as COUNT of post_likes on posts authored by this account.
+
+────────────────────────────────────────────────────────────────
+ Table 9 / 10 : notifications
+────────────────────────────────────────────────────────────────
+4 rows — one per account. id INTEGER PRIMARY KEY, account_id INTEGER NOT NULL FK→accounts(id), title TEXT NOT NULL set to 'Welcome to the platform', is_read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL set to the account's created_at date.
+
+────────────────────────────────────────────────────────────────
+ Table 10 / 10 : hashtags
+────────────────────────────────────────────────────────────────
+3 rows — new table. id INTEGER PRIMARY KEY, tag TEXT NOT NULL UNIQUE, usage_count INTEGER NOT NULL DEFAULT 0. Rows: (1, 'photography', 2), (2, 'food', 1), (3, 'art', 1).
 
 ────────────────────────────────────────────────────────────────
  DROP ALL LEGACY TABLES: fb_users, fb_posts, fb_comments, fb_likes, fb_groups, fb_group_members.
@@ -236,4 +246,27 @@ INSERT INTO account_stats VALUES (1, 1, 1, 2);
 INSERT INTO account_stats VALUES (2, 2, 1, 0);
 INSERT INTO account_stats VALUES (3, 3, 1, 1);
 INSERT INTO account_stats VALUES (4, 4, 1, 0);
+
+CREATE TABLE notifications (
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id),
+    title TEXT NOT NULL,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+
+INSERT INTO notifications VALUES (1, 1, 'Welcome to the platform', 0, '2021-01-10');
+INSERT INTO notifications VALUES (2, 2, 'Welcome to the platform', 0, '2021-03-05');
+INSERT INTO notifications VALUES (3, 3, 'Welcome to the platform', 0, '2021-06-18');
+INSERT INTO notifications VALUES (4, 4, 'Welcome to the platform', 0, '2022-01-12');
+
+CREATE TABLE hashtags (
+    id INTEGER PRIMARY KEY,
+    tag TEXT NOT NULL UNIQUE,
+    usage_count INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO hashtags VALUES (1, 'photography', 2);
+INSERT INTO hashtags VALUES (2, 'food', 1);
+INSERT INTO hashtags VALUES (3, 'art', 1);
 """

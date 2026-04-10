@@ -8,7 +8,7 @@ HealthFirst Clinic → MedCore Enterprise Hospital Migration
 ============================================================
 
 HealthFirst Community Clinic has 4 legacy tables (hc_ prefix, email refs, zero FKs).
-Migrate into 6 enterprise tables. Split hc_reports into xray_reports and lab_results.
+Migrate into 8 enterprise tables. Split hc_reports into xray_reports, lab_results, and mri_reports. Compute patient_stats.
 Drop all 4 legacy tables after migration.
 
 ────────────────────────────────────────────────────────────────
@@ -32,14 +32,24 @@ Drop all 4 legacy tables after migration.
 4 rows from hc_appointments. id INTEGER PRIMARY KEY from aid, patient_id INTEGER NOT NULL FK→patients(id) resolved by joining appt_patient_email against patients.email, doctor_id INTEGER NOT NULL FK→doctors(id) resolved by joining appt_doctor_email against doctors.email, appointment_date TEXT NOT NULL from appt_date, status TEXT NOT NULL DEFAULT 'scheduled' from appt_status.
 
 ────────────────────────────────────────────────────────────────
- Table 5 / 6 : xray_reports
+ Table 5 / 8 : xray_reports
 ────────────────────────────────────────────────────────────────
 2 rows from hc_reports WHERE rpt_type = 'xray'. id INTEGER PRIMARY KEY (renumbered 1-2), patient_id INTEGER NOT NULL FK→patients(id) via rpt_patient_email, doctor_id INTEGER NOT NULL FK→doctors(id) via rpt_doctor_email, title TEXT NOT NULL from rpt_title, report_date TEXT NOT NULL from rpt_date, severity TEXT NOT NULL DEFAULT 'normal' from rpt_severity.
 
 ────────────────────────────────────────────────────────────────
- Table 6 / 6 : lab_results
+ Table 6 / 8 : lab_results
 ────────────────────────────────────────────────────────────────
 2 rows from hc_reports WHERE rpt_type = 'lab'. Same structure as xray_reports: id INTEGER PRIMARY KEY (renumbered 1-2), patient_id INTEGER NOT NULL FK→patients(id) via rpt_patient_email, doctor_id INTEGER NOT NULL FK→doctors(id) via rpt_doctor_email, title TEXT NOT NULL, report_date TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'normal'.
+
+────────────────────────────────────────────────────────────────
+ Table 7 / 8 : mri_reports
+────────────────────────────────────────────────────────────────
+2 rows from hc_reports WHERE rpt_type = 'mri'. Same structure as xray_reports: id INTEGER PRIMARY KEY (renumbered 1-2), patient_id INTEGER NOT NULL FK→patients(id) via rpt_patient_email, doctor_id INTEGER NOT NULL FK→doctors(id) via rpt_doctor_email, title TEXT NOT NULL, report_date TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'normal'.
+
+────────────────────────────────────────────────────────────────
+ Table 8 / 8 : patient_stats
+────────────────────────────────────────────────────────────────
+3 rows — one per patient. id INTEGER PRIMARY KEY, patient_id INTEGER NOT NULL UNIQUE FK→patients(id), total_appointments INTEGER NOT NULL DEFAULT 0 computed as COUNT of appointments for this patient, total_reports INTEGER NOT NULL DEFAULT 0 computed as total count of xray_reports + lab_results + mri_reports for this patient.
 
 ────────────────────────────────────────────────────────────────
  DROP ALL LEGACY TABLES: hc_patients, hc_doctors, hc_appointments, hc_reports.
@@ -100,6 +110,8 @@ INSERT INTO hc_reports VALUES (1, 'alice@email.com', 'dr.lee@hf.com', 'xray', 'C
 INSERT INTO hc_reports VALUES (2, 'bob@email.com', 'dr.lee@hf.com', 'xray', 'Knee X-Ray', '2024-01-20', 'mild');
 INSERT INTO hc_reports VALUES (3, 'alice@email.com', 'dr.williams@hf.com', 'lab', 'Blood Count', '2024-01-15', 'normal');
 INSERT INTO hc_reports VALUES (4, 'carol@email.com', 'dr.williams@hf.com', 'lab', 'Lipid Panel', '2024-02-05', 'moderate');
+INSERT INTO hc_reports VALUES (5, 'alice@email.com', 'dr.lee@hf.com', 'mri', 'MRI Brain', '2024-03-10', 'normal');
+INSERT INTO hc_reports VALUES (6, 'bob@email.com', 'dr.lee@hf.com', 'mri', 'MRI Knee', '2024-01-25', 'mild');
 """
 
 TARGET_SQL = """
@@ -175,4 +187,27 @@ CREATE TABLE lab_results (
 
 INSERT INTO lab_results VALUES (1, 1, 1, 'Blood Count', '2024-01-15', 'normal');
 INSERT INTO lab_results VALUES (2, 3, 1, 'Lipid Panel', '2024-02-05', 'moderate');
+
+CREATE TABLE mri_reports (
+    id INTEGER PRIMARY KEY,
+    patient_id INTEGER NOT NULL REFERENCES patients(id),
+    doctor_id INTEGER NOT NULL REFERENCES doctors(id),
+    title TEXT NOT NULL,
+    report_date TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'normal'
+);
+
+INSERT INTO mri_reports VALUES (1, 1, 2, 'MRI Brain', '2024-03-10', 'normal');
+INSERT INTO mri_reports VALUES (2, 2, 2, 'MRI Knee', '2024-01-25', 'mild');
+
+CREATE TABLE patient_stats (
+    id INTEGER PRIMARY KEY,
+    patient_id INTEGER NOT NULL UNIQUE REFERENCES patients(id),
+    total_appointments INTEGER NOT NULL DEFAULT 0,
+    total_reports INTEGER NOT NULL DEFAULT 0
+);
+
+INSERT INTO patient_stats VALUES (1, 1, 2, 3);
+INSERT INTO patient_stats VALUES (2, 2, 1, 2);
+INSERT INTO patient_stats VALUES (3, 3, 1, 1);
 """

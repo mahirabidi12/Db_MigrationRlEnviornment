@@ -53,12 +53,22 @@ and reviews. All 7 legacy tables must be dropped.
 2 rows from sl_coupons. id INTEGER PRIMARY KEY from cpid, code TEXT NOT NULL UNIQUE from cp_code, discount_amount REAL NOT NULL from cp_discount, discount_type TEXT NOT NULL from cp_type, expires_at TEXT (nullable) from cp_expires.
 
 ────────────────────────────────────────────────────────────────
- Table 9 / 9 : product_performance
+ Table 9 / 11 : product_performance
 ────────────────────────────────────────────────────────────────
 4 rows — one per product. id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL UNIQUE FK→products(id), total_orders INTEGER NOT NULL DEFAULT 0 computed as COUNT(DISTINCT order_items.order_id) for this product, total_revenue REAL NOT NULL DEFAULT 0.0 computed as SUM(order_items.subtotal) for this product, avg_rating REAL computed as ROUND(AVG(product_reviews.rating), 2) — NULL if no reviews.
 
 ────────────────────────────────────────────────────────────────
- DROP ALL LEGACY TABLES: sl_customers, sl_categories, sl_products, sl_orders, sl_order_items, sl_reviews, sl_coupons.
+ Table 10 / 11 : discount_usage
+────────────────────────────────────────────────────────────────
+3 rows from sl_coupon_uses. id INTEGER PRIMARY KEY from cuid, discount_id INTEGER NOT NULL FK→discount_codes(id) resolved by joining cu_coupon_code against discount_codes.code, user_id INTEGER NOT NULL FK→users(id) resolved by joining cu_cust_email against users.email, used_at TEXT NOT NULL from cu_used_date, order_id INTEGER NOT NULL FK→orders(id) from cu_order_id.
+
+────────────────────────────────────────────────────────────────
+ Table 11 / 11 : daily_revenue
+────────────────────────────────────────────────────────────────
+4 rows — one per distinct order_date. id INTEGER PRIMARY KEY, order_date TEXT NOT NULL UNIQUE, total_orders INTEGER NOT NULL computed as COUNT(*) of orders on that date, total_revenue REAL NOT NULL computed as SUM(orders.total_amount) on that date.
+
+────────────────────────────────────────────────────────────────
+ DROP ALL LEGACY TABLES: sl_customers, sl_categories, sl_products, sl_orders, sl_order_items, sl_reviews, sl_coupons, sl_coupon_uses.
 """
 
 INITIAL_SQL = """
@@ -157,6 +167,18 @@ CREATE TABLE sl_coupons (
 
 INSERT INTO sl_coupons VALUES (1, 'SAVE10', 10.0, 'percentage', '2024-12-31');
 INSERT INTO sl_coupons VALUES (2, 'FLAT20', 20.0, 'fixed', '2024-06-30');
+
+CREATE TABLE sl_coupon_uses (
+    cuid INTEGER PRIMARY KEY,
+    cu_coupon_code TEXT NOT NULL,
+    cu_cust_email TEXT NOT NULL,
+    cu_order_id INTEGER NOT NULL,
+    cu_used_date TEXT NOT NULL
+);
+
+INSERT INTO sl_coupon_uses VALUES (1, 'SAVE10', 'alice@shop.com', 1001, '2024-01-10');
+INSERT INTO sl_coupon_uses VALUES (2, 'FLAT20', 'carol@shop.com', 1003, '2024-02-01');
+INSERT INTO sl_coupon_uses VALUES (3, 'SAVE10', 'dave@shop.com', 1004, '2024-03-05');
 """
 
 TARGET_SQL = """
@@ -282,4 +304,28 @@ INSERT INTO product_performance VALUES (1, 1, 1, 899.99, 5.0);
 INSERT INTO product_performance VALUES (2, 2, 1, 1299.99, 4.0);
 INSERT INTO product_performance VALUES (3, 3, 2, 89.97, 3.0);
 INSERT INTO product_performance VALUES (4, 4, 2, 139.98, NULL);
+
+CREATE TABLE discount_usage (
+    id INTEGER PRIMARY KEY,
+    discount_id INTEGER NOT NULL REFERENCES discount_codes(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    used_at TEXT NOT NULL,
+    order_id INTEGER NOT NULL REFERENCES orders(id)
+);
+
+INSERT INTO discount_usage VALUES (1, 1, 1, '2024-01-10', 1001);
+INSERT INTO discount_usage VALUES (2, 2, 3, '2024-02-01', 1003);
+INSERT INTO discount_usage VALUES (3, 1, 4, '2024-03-05', 1004);
+
+CREATE TABLE daily_revenue (
+    id INTEGER PRIMARY KEY,
+    order_date TEXT NOT NULL UNIQUE,
+    total_orders INTEGER NOT NULL,
+    total_revenue REAL NOT NULL
+);
+
+INSERT INTO daily_revenue VALUES (1, '2024-01-10', 1, 929.98);
+INSERT INTO daily_revenue VALUES (2, '2024-01-15', 1, 1299.99);
+INSERT INTO daily_revenue VALUES (3, '2024-02-01', 1, 99.97);
+INSERT INTO daily_revenue VALUES (4, '2024-03-05', 1, 69.99);
 """
