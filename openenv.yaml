@@ -18,13 +18,13 @@ state: MigrationState
 tasks:
   - id: easy_hospital_migration
     difficulty: easy
-    timeout: 86400
-    description: "HealthFirst Clinic → MedCore: 31 hc_* tables → 41 enterprise tables. Split monolithic reports into 6 specialized types."
+    max_steps: 12
+    description: "HealthFirst Clinic → MedCore: 4→6 tables, 137 checks. Report splitting, email→FK."
   - id: medium_instagram_migration
     difficulty: medium
-    timeout: 86400
-    description: "Facebook → Instagram-style unified schema. Narrative mode — target schema hidden."
+    max_steps: 12
+    description: "Facebook → Instagram: 6→8 tables, 171 checks. Polymorphic likes, self-ref comments, computed stats."
   - id: hard_shoplocal_formulas
     difficulty: hard
-    timeout: 86400
-    description: "ShopLocal → NexGenMart: 35 sl_* tables → 55 standard tables. Narrative mode with explicit computation formulas."
+    max_steps: 12
+    description: "ShopLocal → NexGenMart: 7→9 tables, 209 checks. Self-ref categories, SKU joins, computed aggregates."

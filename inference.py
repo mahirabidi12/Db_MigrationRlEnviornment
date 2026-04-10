@@ -34,6 +34,7 @@ MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 TEMPERATURE = 0.0
 MAX_TOKENS = 4096
+MAX_STEPS = 12
 FALLBACK_SQL = "SELECT name FROM sqlite_master WHERE type='table'"
 BENCHMARK = "db-migration-env"
 
@@ -225,7 +226,7 @@ def parse_model_sql(response_text: str) -> str:
 
 def run_task(task_id: str, client: OpenAI) -> dict:
     env = MigrationEnvironment()
-    obs = env.reset(task_id=task_id, timeout_override=330)
+    obs = env.reset(task_id=task_id)
 
     task = env.task
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -242,21 +243,22 @@ def run_task(task_id: str, client: OpenAI) -> dict:
     success = False
 
     try:
-        while True:
-            step += 1
+        for step in range(1, MAX_STEPS + 1):
             if obs.done:
-                break
-            if obs.time_remaining <= 0:
                 break
 
             try:
-                completion = client.chat.completions.create(
+                kwargs = dict(
                     model=MODEL_NAME,
                     messages=messages,
-                    temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
                     stream=False,
                 )
+                if MODEL_NAME.startswith(("gpt-5", "o1", "o3")):
+                    kwargs["max_completion_tokens"] = MAX_TOKENS
+                else:
+                    kwargs["temperature"] = TEMPERATURE
+                    kwargs["max_tokens"] = MAX_TOKENS
+                completion = client.chat.completions.create(**kwargs)
                 response_text = completion.choices[0].message.content or ""
             except Exception as exc:
                 response_text = FALLBACK_SQL
@@ -275,8 +277,6 @@ def run_task(task_id: str, client: OpenAI) -> dict:
 
             # Mandatory [STEP] log
             error_str = obs.last_sql_result if obs.last_sql_error else None
-            if error_str and "Timeout" in error_str:
-                error_str = "timeout"
             log_step(
                 step=step,
                 action=sql.replace("\n", " ")[:200],

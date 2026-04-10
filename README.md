@@ -179,7 +179,7 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 
 ## Baseline Scores
 
-Scores from running `inference.py` with Nemotron 3 Super 120B (20 mins timeout). Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
+Scores from running `inference.py` with Nemotron 3 Super 120B (12 steps per task). Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
 
 | Task | Score | Checks Passed | Cumulative Reward | Steps |
 |---|---|---|---|---|
@@ -224,7 +224,7 @@ hard_shoplocal_formulas
 
 ### Option 1: Run Baseline Inference
 
-Runs all 3 tasks sequentially with 20 min timeout:
+Runs all 3 tasks sequentially (12 steps per task):
 
 ```bash
 API_BASE_URL=https://integrate.api.nvidia.com/v1 \
