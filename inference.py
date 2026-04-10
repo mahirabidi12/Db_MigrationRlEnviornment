@@ -34,7 +34,7 @@ MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 TEMPERATURE = 0.0
 MAX_TOKENS = 4096
-MAX_STEPS = 12
+MAX_STEPS = 10
 FALLBACK_SQL = "SELECT name FROM sqlite_master WHERE type='table'"
 BENCHMARK = "db-migration-env"
 
@@ -356,8 +356,8 @@ def main() -> None:
     output = {
         "model": MODEL_NAME,
         "total_time_seconds": round(total_elapsed, 1),
-        "average_score": round(avg, 4),
-        "results": {tid: {"total_score": r.get("total_score", 0.0), "checks_passed": r.get("checks_passed", 0), "checks_total": r.get("checks_total", 0)} for tid, r in all_results.items()},
+        "average_score": round(avg, 2),
+        "results": {tid: {"total_score": round(r.get("total_score", 0.0), 2), "checks_passed": r.get("checks_passed", 0), "checks_total": r.get("checks_total", 0)} for tid, r in all_results.items()},
     }
     with open("outputs/baseline_results.json", "w") as f:
         json.dump(output, f, indent=2)

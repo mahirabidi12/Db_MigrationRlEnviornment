@@ -5,9 +5,9 @@ type: space
 runtime: fastapi
 description: >
   RL environment for production-scale database migration.
-  Agents execute SQL to transform legacy schemas (15-35 tables) into normalized
-  enterprise schemas (20-55 tables). Narrative mode — target schema hidden, described
-  in natural language. Checklist-based grader with 1000-2000+ binary checks.
+  Agents execute SQL to transform legacy schemas (4-7 tables) into normalized
+  enterprise schemas (6-9 tables). Narrative mode — target schema hidden, described
+  in natural language. Checklist-based grader with 137-209 binary checks.
 app: db_migration_env.server.app:app
 port: 8000
 
@@ -25,13 +25,13 @@ tags:
 tasks:
   - id: easy_hospital_migration
     difficulty: easy
-    max_steps: 12
+    max_steps: 10
     description: "HealthFirst Clinic → MedCore: 4→6 tables, 137 checks. Report splitting, email→FK."
   - id: medium_instagram_migration
     difficulty: medium
-    max_steps: 12
+    max_steps: 10
     description: "Facebook → Instagram: 6→8 tables, 171 checks. Polymorphic likes, self-ref comments, computed stats."
   - id: hard_shoplocal_formulas
     difficulty: hard
-    max_steps: 12
+    max_steps: 10
     description: "ShopLocal → NexGenMart: 7→9 tables, 209 checks. Self-ref categories, SKU joins, computed aggregates."

@@ -1,7 +1,7 @@
 TASK_ID = "hard_shoplocal_formulas"
 DIFFICULTY = "hard"
-TIMEOUT_SECONDS = 86400
-MAX_STEPS = 12
+TIMEOUT_SECONDS = 300
+MAX_STEPS = 10
 
 TASK_DESCRIPTION = """
 ShopLocal → NexGenMart E-Commerce Migration

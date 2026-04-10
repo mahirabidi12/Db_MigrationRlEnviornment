@@ -129,17 +129,17 @@ These reasons are included in both `failed_checks` and `metadata.evaluation_resu
 
 | Check Type | Easy | Medium | Hard |
 |---|---|---|---|
-| `table_exists` | 41 | 44 | 55 |
-| `column_exists` | 381 | 282 | 504 |
-| `column_type_correct` | 381 | 282 | 504 |
-| `column_nullable_correct` | 227 | 186 | 312 |
-| `column_primary_key_correct` | 41 | 44 | 55 |
-| `column_default_correct` | 65 | 68 | 98 |
-| `fk_exists` | 63 | 58 | 72 |
-| `index_exists` | 48 | — | — |
-| `table_removed` | 31 | 25 | 35 |
-| `data_row_correct` | 400 | 479 | 701 |
-| **Total** | **1,635+** | **1,468** | **2,336** |
+| `table_exists` | 6 | 8 | 9 |
+| `column_exists` | 33 | 44 | 50 |
+| `column_type_correct` | 33 | 44 | 50 |
+| `column_nullable_correct` | 27 | 32 | 36 |
+| `column_primary_key_correct` | 6 | 8 | 9 |
+| `column_default_correct` | 4 | 6 | 4 |
+| `fk_exists` | 7 | 13 | 9 |
+| `index_exists` | — | 2 | 2 |
+| `table_removed` | 4 | 6 | 7 |
+| `data_row_correct` | 17 | 30 | 35 |
+| **Total** | **137** | **171** | **209** |
 
 ---
 
@@ -148,7 +148,7 @@ These reasons are included in both `failed_checks` and `metadata.evaluation_resu
 | Property | Description |
 |---|---|
 | **Deterministic** | Same database state always produces the same score. No randomness or LLM-based evaluation |
-| **Granular** | 1,400-2,300+ checks per task. A single correct `CREATE TABLE` can pass 15+ checks. A single correct `INSERT` can pass several more |
+| **Granular** | 137-209 checks per task. A single correct `CREATE TABLE` can pass 10+ checks. A single correct `INSERT` can pass several more |
 | **Transparent** | Every failed check has a human-readable reason. No black-box scoring |
 | **Unweighted** | Every check is worth exactly 1 point. No hidden multipliers or dimension weights |
 | **Zero-start** | Acquisition theme ensures zero table name overlap between initial and target schemas. Score starts at 0.0 |

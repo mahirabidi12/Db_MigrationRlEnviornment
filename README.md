@@ -33,7 +33,7 @@ We built it because **no one teaches agents to do the work that keeps engineers 
 | **Real-world task** — database migrations are a genuine pain point in industry | Agent learns skills with practical value |
 | **Narrative mode** — target schema is hidden, described only in natural language | Tests reasoning + planning, not just pattern matching |
 | **Dense reward signal** — every SQL statement gets immediate feedback | Enables step-by-step learning, not sparse end-of-episode signal |
-| **Combinatorial complexity** — 30-55 tables, FK dependency chains, computed aggregations | Rich action space that scales with difficulty |
+| **Combinatorial complexity** — 4-9 tables, FK dependency chains, computed aggregations | Rich action space that scales with difficulty |
 | **Zero initial overlap** — legacy and target table names are completely different | Forces structural understanding, not cosmetic renaming |
 
 ## How It Works
@@ -132,16 +132,16 @@ Three tasks at increasing difficulty — all set in a company acquisition scenar
 |---|---|---|---|
 | **Task ID** | `easy_hospital_migration` | `medium_instagram_migration` | `hard_shoplocal_formulas` |
 | **Story** | HealthFirst Clinic acquired by MedCore Hospital | Facebook migrated to Instagram-style schema | ShopLocal e-commerce acquired by NexGenMart |
-| **Initial tables** | 31 (`hc_*`) | 25 (`fb_*`) | 35 (`sl_*`) |
-| **Target tables** | 41 | 44 | 55 |
-| **Grader checks** | 1,635 | 1,468 | 2,336 |
-| **Key challenge** | Split monolithic reports table into 6 specialized types | Convert bidirectional friendships to directional follows; split polymorphic likes | Deep FK chains (3-4 levels), 4 computed analytics tables, multi-source text resolution |
+| **Initial tables** | 4 (`hc_*`) | 6 (`fb_*`) | 7 (`sl_*`) |
+| **Target tables** | 6 | 8 | 9 |
+| **Grader checks** | 137 | 171 | 209 |
+| **Key challenge** | Split monolithic reports into xray + lab tables | Polymorphic like splitting, self-ref comments, computed stats | Self-ref categories, SKU joins, computed product performance |
 
 For full task descriptions, schemas, and migration challenges, see [task_desc.md](docs/task_desc.md).
 
 ## Grading
 
-Every check is worth exactly 1 point. Score = checks passed / total checks. Tasks have 1,468 to 2,336 checks each.
+Every check is worth exactly 1 point. Score = checks passed / total checks. Tasks have 137 to 209 checks each.
 
 **10 check types:** table_exists, column_exists, column_type_correct, column_nullable_correct, column_primary_key_correct, column_default_correct, fk_exists, index_exists, table_removed, data_row_correct.
 
@@ -186,16 +186,16 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 
 ## Baseline Scores
 
-Scores from running `inference.py` with Nemotron 3 Super 120B (12 steps per task). Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
+Scores from running `inference.py` with Nemotron 3 Super 120B (10 steps per task). Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
 
-| Task | Score | Checks Passed | Cumulative Reward | Steps |
-|---|---|---|---|---|
-| Easy (Hospital) | **20.8%** | 342 / 1,647 | +0.2077 | 10 |
-| Medium (Instagram) | **24.3%** | 357 / 1,468 | +0.2432 | 20 |
-| Hard (ShopLocal) | **3.1%** | 72 / 2,336 | +0.0308 | 5 |
-| **Average** | **16.1%** | | **+0.1606** | |
+| Task | Score | Checks Passed |
+|---|---|---|
+| Easy (Hospital) | **78.1%** | 107 / 137 |
+| Medium (Instagram) | **99.4%** | 172 / 173 |
+| Hard (ShopLocal) | **44.3%** | 93 / 210 |
+| **Average** | **73.9%** | |
 
-Nemotron averages ~30-60s per response, yielding 5-20 steps per task. The environment is designed to be challenging — even with correct schema creation, the agent runs out of time before completing data migration and legacy table drops.
+Nemotron averages ~30-60s per response. Easy and medium are nearly solvable within 10 steps; hard requires more steps for computed tables and self-referential FK resolution.
 
 ## Setup
 
@@ -231,7 +231,7 @@ hard_shoplocal_formulas
 
 ### Option 1: Run Baseline Inference
 
-Runs all 3 tasks sequentially (12 steps per task):
+Runs all 3 tasks sequentially (10 steps per task):
 
 ```bash
 API_BASE_URL=https://integrate.api.nvidia.com/v1 \
@@ -309,14 +309,14 @@ curl https://techsas-db-migration-env.hf.space/health
 │   │   ├── app.py                # FastAPI server (all endpoints)
 │   │   └── environment.py        # Core environment (reset/step/grade)
 │   ├── graders/
-│   │   └── migration_grader.py   # Checklist grader (1,400-2,300 checks)
+│   │   └── migration_grader.py   # Checklist grader (137-209 checks)
 │   ├── reward.py                 # Reward pipeline (delta + penalties)
 │   ├── db_engine.py              # SQLite engine + schema introspection
 │   ├── models.py                 # Pydantic models (Action, Observation, State)
 │   └── tasks/
-│       ├── task_easy.py           # Hospital migration (31→41 tables)
-│       ├── task_medium.py         # Instagram migration (25→44 tables)
-│       └── task_hard.py           # E-commerce migration (35→55 tables)
+│       ├── task_easy.py           # Hospital migration (4→6 tables)
+│       ├── task_medium.py         # Instagram migration (6→8 tables)
+│       └── task_hard.py           # E-commerce migration (7→9 tables)
 ├── docs/
 │   ├── grader.md                 # Grader documentation
 │   ├── reward.md                 # Reward function documentation

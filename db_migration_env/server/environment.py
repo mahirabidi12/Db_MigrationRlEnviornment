@@ -170,7 +170,7 @@ class MigrationEnvironment:
             episode_id=self._episode_id,
             task_id=self.task.task_id if self.task else "",
             step_count=self._step_count,
-            timeout_seconds=self._timeout if self._timeout else 86400,
+            timeout_seconds=self._timeout if self._timeout else 300,
             time_remaining=round(self._time_remaining(), 1),
             done=self._done,
             cumulative_reward=round(self._cumulative_reward, 4),
@@ -198,7 +198,7 @@ class MigrationEnvironment:
         )
         result["initial_score"] = self._initial_grader_score
         result["time_remaining"] = round(self._time_remaining(), 1)
-        result["timeout_seconds"] = self._timeout if self._timeout else 86400
+        result["timeout_seconds"] = self._timeout if self._timeout else 300
         if self._last_reward_breakdown:
             result["last_reward_breakdown"] = self._last_reward_breakdown
         return result
@@ -242,7 +242,7 @@ class MigrationEnvironment:
             last_sql_result=last_result,
             last_sql_error=last_error,
             step_count=self._step_count,
-            timeout_seconds=self._timeout if self._timeout else 86400,
+            timeout_seconds=self._timeout if self._timeout else 300,
             time_remaining=round(self._time_remaining(), 1),
             task_id=self.task.task_id if self.task else "",
             task_description=self.task.description if self.task else "",

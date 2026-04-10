@@ -157,7 +157,7 @@ This ensures the agent is never penalized for the starting state. In our acquisi
   "score_after": 0.1049,
   "checks_before": 147,
   "checks_after": 154,
-  "checks_total": 1468,
+  "checks_total": 171,
   "new_checks_passed": 7,
   "delta": 0.0048,
   "mistake_penalty": 0.0,
