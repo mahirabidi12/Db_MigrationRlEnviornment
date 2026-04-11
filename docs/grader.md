@@ -25,7 +25,7 @@ The grader is implemented in `MigrationGrader` (`db_migration_env/graders/migrat
 {
   "reward": 0.8211,
   "total_score": 0.8211,
-  "checks_passed": 1377,
+  "checks_passed": 171,
   "checks_total": 1677,
   "summary": {
     "table_exists": {"total": 41, "passed": 41, "failed": 0},
@@ -36,7 +36,7 @@ The grader is implemented in `MigrationGrader` (`db_migration_env/graders/migrat
   "metadata": {
     "evaluation_results": [ ... ],
     "total_evaluations": 1677,
-    "passed_evaluations": 1377,
+    "passed_evaluations": 171,
     "average_score": 0.8211
   },
   "steps_taken": 109,

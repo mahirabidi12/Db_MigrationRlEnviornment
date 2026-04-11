@@ -186,16 +186,16 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 
 ## Baseline Scores
 
-Scores from running `inference.py` with Nemotron 3 Super 120B (10 steps per task). Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
+Scores from running `inference.py` with Nemotron 3 Super 120B. Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
 
 | Task | Score | Checks Passed |
 |---|---|---|
-| Easy (Hospital) | **78.1%** | 107 / 137 |
-| Medium (Instagram) | **99.4%** | 172 / 173 |
-| Hard (ShopLocal) | **44.3%** | 93 / 210 |
-| **Average** | **73.9%** | |
+| Easy (Hospital) | **0.88** | 171 / 194 |
+| Medium (Instagram) | **0.74** | 163 / 219 |
+| Hard (ShopLocal) | **0.27** | 68 / 249 |
+| **Average** | **0.63** | |
 
-Nemotron averages ~30-60s per response. Easy and medium are nearly solvable within 10 steps; hard requires more steps for computed tables and self-referential FK resolution.
+Nemotron averages ~30-60s per response. Easy is nearly solvable within 8 steps; medium requires more complex JOINs and computed tables; hard requires self-referential FK resolution and multi-table aggregations.
 
 ## Setup
 
@@ -231,7 +231,7 @@ hard_shoplocal_formulas
 
 ### Option 1: Run Baseline Inference
 
-Runs all 3 tasks sequentially (10 steps per task):
+Runs all 3 tasks sequentially (8 steps per task):
 
 ```bash
 API_BASE_URL=https://integrate.api.nvidia.com/v1 \

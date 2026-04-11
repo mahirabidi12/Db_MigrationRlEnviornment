@@ -75,17 +75,17 @@ Defined in the `PENALTIES` dictionary:
 
 | Category | Penalty Type | Amount per instance | Trigger condition |
 |---|---|---|---|
-| **Structural** | `junk_table` | -0.005 | Table created that exists in neither target nor initial schema |
-| **Structural** | `junk_column` | -0.002 | Column in a target table that doesn't exist in the target specification |
-| **Structural** | `junk_fk` | -0.002 | Foreign key on a target table that isn't in the target specification |
-| **Constraint** | `wrong_type` | -0.001 | Column exists but type doesn't match (after normalization) |
-| **Constraint** | `wrong_notnull` | -0.001 | Target says NOT NULL, current column allows NULL |
-| **Constraint** | `wrong_default` | -0.001 | DEFAULT value doesn't match (after normalization) |
-| **Constraint** | `wrong_pk` | -0.001 | Target says PRIMARY KEY, current column isn't PK |
-| **Data** | `wrong_data` | -0.0005 per row | Row in current DB doesn't match any expected target row |
-| **Execution** | `sql_error` | -0.001 flat | SQL statement failed to execute |
+| **Structural** | `junk_table` | -0.05 | Table created that exists in neither target nor initial schema |
+| **Structural** | `junk_column` | -0.02 | Column in a target table that doesn't exist in the target specification |
+| **Structural** | `junk_fk` | -0.02 | Foreign key on a target table that isn't in the target specification |
+| **Constraint** | `wrong_type` | -0.01 | Column exists but type doesn't match (after normalization) |
+| **Constraint** | `wrong_notnull` | -0.01 | Target says NOT NULL, current column allows NULL |
+| **Constraint** | `wrong_default` | -0.01 | DEFAULT value doesn't match (after normalization) |
+| **Constraint** | `wrong_pk` | -0.01 | Target says PRIMARY KEY, current column isn't PK |
+| **Data** | `wrong_data` | -0.005 per row | Row in current DB doesn't match any expected target row |
+| **Execution** | `sql_error` | -0.01 flat | SQL statement failed to execute |
 
-**Note:** The actual penalty computation uses a flat `0.002` per structural mistake rather than looking up individual penalty values from the dictionary. Data penalties use `0.0005` per wrong row as specified.
+**Note:** The actual penalty computation uses a flat `0.02` per structural mistake rather than looking up individual penalty values from the dictionary. Data penalties use `0.005` per wrong row as specified.
 
 ### Delta-Based Penalty Model
 
@@ -94,12 +94,12 @@ Only **new** mistakes are penalized each step:
 ```python
 new_mistakes = max(0, mistakes_now - prev_mistakes)
 new_wrong_data = max(0, wrong_data_now - prev_wrong_data)
-penalty = new_mistakes * 0.002 + new_wrong_data * 0.0005 + (0.001 if sql_error)
+penalty = new_mistakes * 0.02 + new_wrong_data * 0.005 + (0.01 if sql_error)
 ```
 
 | Step | Event | Penalty |
 |---|---|---|
-| Step 5 | Agent creates a junk table | -0.002 (penalized once) |
+| Step 5 | Agent creates a junk table | -0.02 (penalized once) |
 | Step 6 | Junk table still exists | 0.0 (not re-penalized) |
 | Step 7 | Agent drops the junk table | 0.0 (mistake count decreases, no penalty) |
 
@@ -168,13 +168,13 @@ This ensures the agent is never penalized for the starting state. In our acquisi
 **Mixed reward — progress with data errors:**
 ```json
 {
-  "score_before": 0.450,
-  "score_after": 0.452,
-  "new_checks_passed": 3,
-  "delta": 0.002,
-  "mistake_penalty": -0.0015,
-  "mistake_details": "3 new wrong data row(s)",
-  "total": 0.0005
+  "score_before": 0.45,
+  "score_after": 0.50,
+  "new_checks_passed": 5,
+  "delta": 0.05,
+  "mistake_penalty": -0.01,
+  "mistake_details": "2 new wrong data row(s)",
+  "total": 0.04
 }
 ```
 
@@ -185,9 +185,9 @@ This ensures the agent is never penalized for the starting state. In our acquisi
   "score_after": 0.450,
   "new_checks_passed": 0,
   "delta": 0.0,
-  "mistake_penalty": -0.001,
+  "mistake_penalty": -0.01,
   "mistake_details": "SQL error",
-  "total": -0.001
+  "total": -0.01
 }
 ```
 
