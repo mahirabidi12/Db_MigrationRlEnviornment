@@ -15,7 +15,7 @@ jobs:
           echo "Health check: HTTP $STATUS"
           if [ "$STATUS" != "200" ]; then
             echo "Space is down! Sending wake-up ping..."
-            curl -s -X POST https://techsas-db-migration-env.hf.space/reset -H "Content-Type: application/json" -d '{}' -o /dev/null
+            curl -s -X POST https://techsas-db-migration-env.hf.space/reset -H "Content-Type: application/json" -d '{"session_id":"keepalive"}' -o /dev/null
             sleep 30
             curl -s https://techsas-db-migration-env.hf.space/health
           fi
