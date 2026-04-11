@@ -34,7 +34,7 @@ MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
 TEMPERATURE = 0.0
 MAX_TOKENS = 4096
-MAX_STEPS = 10
+MAX_STEPS = 8
 FALLBACK_SQL = "SELECT name FROM sqlite_master WHERE type='table'"
 BENCHMARK = "db-migration-env"
 
@@ -54,6 +54,7 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
 
 
 def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    score = max(0.01, min(0.99, score))
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
 
@@ -328,7 +329,7 @@ def main() -> None:
             all_results[task_id] = grade
         except Exception as e:
             print(f"\n  FAILED: {e}")
-            all_results[task_id] = {"total_score": 0.0, "error": str(e)}
+            all_results[task_id] = {"total_score": 0.01, "error": str(e)}
 
     total_elapsed = _time.time() - global_start
 

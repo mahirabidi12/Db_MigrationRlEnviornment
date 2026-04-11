@@ -25,13 +25,13 @@ tags:
 tasks:
   - id: easy_hospital_migration
     difficulty: easy
-    max_steps: 10
+    max_steps: 8
     description: "HealthFirst Clinic → MedCore: 4→6 tables, 137 checks. Report splitting, email→FK."
   - id: medium_instagram_migration
     difficulty: medium
-    max_steps: 10
+    max_steps: 8
     description: "Facebook → Instagram: 6→8 tables, 171 checks. Polymorphic likes, self-ref comments, computed stats."
   - id: hard_shoplocal_formulas
     difficulty: hard
-    max_steps: 10
+    max_steps: 8
     description: "ShopLocal → NexGenMart: 7→9 tables, 209 checks. Self-ref categories, SKU joins, computed aggregates."

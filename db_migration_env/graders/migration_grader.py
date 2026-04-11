@@ -339,6 +339,7 @@ class MigrationGrader:
         total_checks = len(checks)
         passed_checks = sum(1 for c in checks if c.passed)
         score = passed_checks / total_checks if total_checks > 0 else 0.0
+        score = max(0.01, min(0.99, score))
 
         # Build summary by check type
         summary: Dict[str, Dict[str, int]] = {}
