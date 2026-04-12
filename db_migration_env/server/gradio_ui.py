@@ -150,9 +150,9 @@ def build_gradio_app():
         gr.Markdown("""
 # DB Migration RL Environment
 
-A production-scale RL environment for database migration. Legacy schemas with email references, zero foreign keys, and abbreviated column names must be transformed into enterprise-grade schemas — all through SQL — single or multi-statement per step. Every step is graded against 1,400-2,300+ binary checks covering schema structure, referential integrity, constraints, and row-level data accuracy. Dense per-step rewards guide the agent toward the target.
+A production-scale RL environment for database migration. Legacy schemas with email references, zero foreign keys, and abbreviated column names must be transformed into enterprise-grade schemas — all through SQL — single or multi-statement per step. Every step is graded against 194-249 binary checks covering schema structure, referential integrity, constraints, and row-level data accuracy. Dense per-step rewards guide the agent toward the target.
 
-**Tasks**: Easy (31→41 tables) | Medium (25→44 tables) | Hard (35→55 tables) — narrative mode, target schemas hidden
+**Tasks**: Easy (4→8 tables) | Medium (6→10 tables) | Hard (8→11 tables) — narrative mode, target schemas hidden
         """)
 
         with gr.Row():

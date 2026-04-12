@@ -23,10 +23,10 @@ The grader is implemented in `MigrationGrader` (`db_migration_env/graders/migrat
 
 ```json
 {
-  "reward": 0.8211,
-  "total_score": 0.8211,
+  "reward": 0.88,
+  "total_score": 0.88,
   "checks_passed": 171,
-  "checks_total": 1677,
+  "checks_total": 194,
   "summary": {
     "table_exists": {"total": 41, "passed": 41, "failed": 0},
     "column_exists": {"total": 381, "passed": 350, "failed": 31},
@@ -35,9 +35,9 @@ The grader is implemented in `MigrationGrader` (`db_migration_env/graders/migrat
   "failed_checks": [ ... ],
   "metadata": {
     "evaluation_results": [ ... ],
-    "total_evaluations": 1677,
+    "total_evaluations": 194,
     "passed_evaluations": 171,
-    "average_score": 0.8211
+    "average_score": 0.88
   },
   "steps_taken": 109,
   "error_count": 0
@@ -148,7 +148,7 @@ These reasons are included in both `failed_checks` and `metadata.evaluation_resu
 | Property | Description |
 |---|---|
 | **Deterministic** | Same database state always produces the same score. No randomness or LLM-based evaluation |
-| **Granular** | 137-209 checks per task. A single correct `CREATE TABLE` can pass 10+ checks. A single correct `INSERT` can pass several more |
+| **Granular** | 194-249 checks per task. A single correct `CREATE TABLE` can pass 10+ checks. A single correct `INSERT` can pass several more |
 | **Transparent** | Every failed check has a human-readable reason. No black-box scoring |
 | **Unweighted** | Every check is worth exactly 1 point. No hidden multipliers or dimension weights |
 | **Zero-start** | Acquisition theme ensures zero table name overlap between initial and target schemas. Score starts at 0.0 |

@@ -53,7 +53,7 @@ Agent                          Environment
   |           ... repeat ...       |
   |                                |
   |-------- POST /grader --------> |  Final evaluation
-  |<------- detailed score ------- |  1377/1677 checks passed = 82.1%
+  |<------- detailed score ------- |  171/194 checks passed = 88%
 ```
 
 ## Action Space
@@ -112,15 +112,15 @@ Every step returns a detailed breakdown in `metadata.reward_breakdown`:
 
 ```json
 {
-  "score_before": 0.4012,
-  "score_after": 0.4210,
-  "checks_before": 673,
-  "checks_after": 706,
-  "checks_total": 1677,
-  "new_checks_passed": 33,
-  "delta": 0.0198,
-  "mistake_penalty": -0.002,
-  "total": 0.0178
+  "score_before": 0.40,
+  "score_after": 0.50,
+  "checks_before": 80,
+  "checks_after": 100,
+  "checks_total": 200,
+  "new_checks_passed": 20,
+  "delta": 0.10,
+  "mistake_penalty": -0.02,
+  "total": 0.08
 }
 ```
 
@@ -132,16 +132,16 @@ Three tasks at increasing difficulty — all set in a company acquisition scenar
 |---|---|---|---|
 | **Task ID** | `easy_hospital_migration` | `medium_instagram_migration` | `hard_shoplocal_formulas` |
 | **Story** | HealthFirst Clinic acquired by MedCore Hospital | Facebook migrated to Instagram-style schema | ShopLocal e-commerce acquired by NexGenMart |
-| **Initial tables** | 4 (`hc_*`) | 6 (`fb_*`) | 7 (`sl_*`) |
-| **Target tables** | 6 | 8 | 9 |
-| **Grader checks** | 137 | 171 | 209 |
-| **Key challenge** | Split monolithic reports into xray + lab tables | Polymorphic like splitting, self-ref comments, computed stats | Self-ref categories, SKU joins, computed product performance |
+| **Initial tables** | 4 (`hc_*`) | 6 (`fb_*`) | 8 (`sl_*`) |
+| **Target tables** | 8 | 10 | 11 |
+| **Grader checks** | 194 | 217 | 249 |
+| **Key challenge** | Split reports into 3 types + computed patient_stats | Polymorphic like splitting, self-ref comments, computed stats | Self-ref categories, 3-way FK, computed aggregates |
 
 For full task descriptions, schemas, and migration challenges, see [task_desc.md](docs/task_desc.md).
 
 ## Grading
 
-Every check is worth exactly 1 point. Score = checks passed / total checks. Tasks have 137 to 209 checks each.
+Every check is worth exactly 1 point. Score = checks passed / total checks. Tasks have 194 to 249 checks each.
 
 **10 check types:** table_exists, column_exists, column_type_correct, column_nullable_correct, column_primary_key_correct, column_default_correct, fk_exists, index_exists, table_removed, data_row_correct.
 
@@ -309,14 +309,14 @@ curl https://techsas-db-migration-env.hf.space/health
 │   │   ├── app.py                # FastAPI server (all endpoints)
 │   │   └── environment.py        # Core environment (reset/step/grade)
 │   ├── graders/
-│   │   └── migration_grader.py   # Checklist grader (137-209 checks)
+│   │   └── migration_grader.py   # Checklist grader (194-249 checks)
 │   ├── reward.py                 # Reward pipeline (delta + penalties)
 │   ├── db_engine.py              # SQLite engine + schema introspection
 │   ├── models.py                 # Pydantic models (Action, Observation, State)
 │   └── tasks/
-│       ├── task_easy.py           # Hospital migration (4→6 tables)
-│       ├── task_medium.py         # Instagram migration (6→8 tables)
-│       └── task_hard.py           # E-commerce migration (7→9 tables)
+│       ├── task_easy.py           # Hospital migration (4→8 tables)
+│       ├── task_medium.py         # Instagram migration (6→10 tables)
+│       └── task_hard.py           # E-commerce migration (8→11 tables)
 ├── docs/
 │   ├── grader.md                 # Grader documentation
 │   ├── reward.md                 # Reward function documentation

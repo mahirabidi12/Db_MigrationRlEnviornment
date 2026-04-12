@@ -153,15 +153,15 @@ This ensures the agent is never penalized for the starting state. In our acquisi
 **Positive reward — agent creates a correct table:**
 ```json
 {
-  "score_before": 0.1001,
-  "score_after": 0.1049,
+  "score_before": 0.10,
+  "score_after": 0.15,
   "checks_before": 147,
   "checks_after": 154,
   "checks_total": 171,
   "new_checks_passed": 7,
-  "delta": 0.0048,
+  "delta": 0.05,
   "mistake_penalty": 0.0,
-  "total": 0.0048
+  "total": 0.05
 }
 ```
 
@@ -194,12 +194,12 @@ This ensures the agent is never penalized for the starting state. In our acquisi
 **Regression — agent drops a table it already built:**
 ```json
 {
-  "score_before": 0.452,
-  "score_after": 0.440,
+  "score_before": 0.45,
+  "score_after": 0.35,
   "new_checks_passed": -18,
-  "delta": -0.012,
+  "delta": -0.10,
   "mistake_penalty": 0.0,
-  "total": -0.012
+  "total": -0.10
 }
 ```
 
