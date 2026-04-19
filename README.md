@@ -33,7 +33,7 @@ We built it because **no one teaches agents to do the work that keeps engineers 
 | **Real-world task** — database migrations are a genuine pain point in industry | Agent learns skills with practical value |
 | **Narrative mode** — target schema is hidden, described only in natural language | Tests reasoning + planning, not just pattern matching |
 | **Dense reward signal** — every SQL statement gets immediate feedback | Enables step-by-step learning, not sparse end-of-episode signal |
-| **Combinatorial complexity** — 4-9 tables, FK dependency chains, computed aggregations | Rich action space that scales with difficulty |
+| **Combinatorial complexity** — 4-55 tables, FK dependency chains, computed aggregations | Rich action space that scales with difficulty |
 | **Zero initial overlap** — legacy and target table names are completely different | Forces structural understanding, not cosmetic renaming |
 
 ## How It Works
@@ -126,7 +126,9 @@ Every step returns a detailed breakdown in `metadata.reward_breakdown`:
 
 ## Tasks
 
-Three tasks at increasing difficulty — all set in a company acquisition scenario, all in narrative mode:
+Six tasks at increasing difficulty — all set in a company acquisition scenario, all in narrative mode. Each scenario has a **compact** variant (4–11 tables) and an **expanded** `_2` variant (25–55 tables) that models the full production operation.
+
+### Compact variants
 
 | | Easy | Medium | Hard |
 |---|---|---|---|
@@ -137,11 +139,22 @@ Three tasks at increasing difficulty — all set in a company acquisition scenar
 | **Grader checks** | 194 | 217 | 249 |
 | **Key challenge** | Split reports into 3 types + computed patient_stats | Polymorphic like splitting, self-ref comments, computed stats | Self-ref categories, 3-way FK, computed aggregates |
 
+### Expanded variants
+
+| | Easy 2 | Medium 2 | Hard 2 |
+|---|---|---|---|
+| **Task ID** | `easy_hospital_migration_2` | `medium_instagram_migration_2` | `hard_shoplocal_formulas_2` |
+| **Story** | HealthFirst Clinic — full 31-table operation → MedCore enterprise | Facebook full 25-table platform → Instagram-style unified schema | ShopLocal full 35-table e-commerce stack → NexGenMart |
+| **Initial tables** | 31 (`hc_*`) | 25 (`fb_*`) | 35 (`sl_*`) |
+| **Target tables** | 41 | 44 | 55 |
+| **Grader checks** | 1,635 | 1,468 | 2,336 |
+| **Key challenge** | Split monolithic reports table into 6 specialized types; 48 indexes | Convert bidirectional friendships to directional follows; split polymorphic likes; 6 computed analytics tables | Deep FK chains (3-4 levels), 4 computed analytics tables, multi-source text resolution |
+
 For full task descriptions, schemas, and migration challenges, see [task_desc.md](docs/task_desc.md).
 
 ## Grading
 
-Every check is worth exactly 1 point. Score = checks passed / total checks. Tasks have 194 to 249 checks each.
+Every check is worth exactly 1 point. Score = checks passed / total checks. Compact tasks have 137–249 checks each; expanded `_2` tasks have 1,468–2,336 checks each.
 
 **10 check types:** table_exists, column_exists, column_type_correct, column_nullable_correct, column_primary_key_correct, column_default_correct, fk_exists, index_exists, table_removed, data_row_correct.
 
@@ -182,11 +195,13 @@ For full reward breakdown and penalty schedule, see [reward.md](docs/reward.md).
 | WebSocket | `/ws` |
 | Concurrent Sessions | via `session_id` param |
 | Narrative Mode | Target schema hidden — agent reads a 30K+ char natural-language spec instead |
-| 3 Difficulty Levels | easy → medium → hard |
+| 6 Tasks | compact (easy/medium/hard) and expanded (easy_2/medium_2/hard_2) variants |
 
 ## Baseline Scores
 
 Scores from running `inference.py` with Nemotron 3 Super 120B. Full results in [outputs/baseline_results.json](outputs/baseline_results.json).
+
+### Compact tasks
 
 | Task | Score | Checks Passed |
 |---|---|---|
@@ -196,6 +211,17 @@ Scores from running `inference.py` with Nemotron 3 Super 120B. Full results in [
 | **Average** | **0.63** | |
 
 Nemotron averages ~30-60s per response. Easy is nearly solvable within 8 steps; medium requires more complex JOINs and computed tables; hard requires self-referential FK resolution and multi-table aggregations.
+
+### Expanded tasks (`_2`)
+
+| Task | Score | Checks Passed | Cumulative Reward | Steps |
+|---|---|---|---|---|
+| Easy 2 (Hospital) | **20.8%** | 342 / 1,647 | +0.2077 | 10 |
+| Medium 2 (Instagram) | **24.3%** | 357 / 1,468 | +0.2432 | 20 |
+| Hard 2 (ShopLocal) | **3.1%** | 72 / 2,336 | +0.0308 | 5 |
+| **Average** | **16.1%** | | **+0.1606** | |
+
+The expanded variants are designed to be significantly harder — even with correct schema creation, the agent typically runs out of time before completing data migration and legacy table drops across the 25-35 source tables.
 
 ## Setup
 
@@ -225,13 +251,16 @@ Expected output:
 easy_hospital_migration
 medium_instagram_migration
 hard_shoplocal_formulas
+easy_hospital_migration_2
+medium_instagram_migration_2
+hard_shoplocal_formulas_2
 ```
 
 ## Usage
 
 ### Option 1: Run Baseline Inference
 
-Runs all 3 tasks sequentially (8 steps per task):
+Runs all tasks sequentially (8 steps per task):
 
 ```bash
 API_BASE_URL=https://integrate.api.nvidia.com/v1 \
@@ -309,14 +338,17 @@ curl https://techsas-db-migration-env.hf.space/health
 │   │   ├── app.py                # FastAPI server (all endpoints)
 │   │   └── environment.py        # Core environment (reset/step/grade)
 │   ├── graders/
-│   │   └── migration_grader.py   # Checklist grader (194-249 checks)
+│   │   └── migration_grader.py   # Checklist grader (137-2,336 checks)
 │   ├── reward.py                 # Reward pipeline (delta + penalties)
 │   ├── db_engine.py              # SQLite engine + schema introspection
 │   ├── models.py                 # Pydantic models (Action, Observation, State)
 │   └── tasks/
-│       ├── task_easy.py           # Hospital migration (4→8 tables)
-│       ├── task_medium.py         # Instagram migration (6→10 tables)
-│       └── task_hard.py           # E-commerce migration (8→11 tables)
+│       ├── task_easy.py           # Hospital migration compact (4→8 tables)
+│       ├── task_medium.py         # Instagram migration compact (6→10 tables)
+│       ├── task_hard.py           # E-commerce migration compact (8→11 tables)
+│       ├── task_easy_2.py         # Hospital migration expanded (31→41 tables)
+│       ├── task_medium_2.py       # Instagram migration expanded (25→44 tables)
+│       └── task_hard_2.py         # E-commerce migration expanded (35→55 tables)
 ├── docs/
 │   ├── grader.md                 # Grader documentation
 │   ├── reward.md                 # Reward function documentation

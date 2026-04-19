@@ -1,7 +1,7 @@
 {
   "model": "nvidia/nemotron-3-super-120b-a12b",
-  "total_time_seconds": 530.4,
-  "average_score": 0.63,
+  "total_time_seconds": 1730.4,
+  "average_score": 0.3953,
   "results": {
     "easy_hospital_migration": {
       "total_score": 0.88,
@@ -17,6 +17,21 @@
       "total_score": 0.27,
       "checks_passed": 68,
       "checks_total": 249
+    },
+    "easy_hospital_migration_2": {
+      "total_score": 0.2077,
+      "checks_passed": 342,
+      "checks_total": 1647
+    },
+    "medium_instagram_migration_2": {
+      "total_score": 0.2432,
+      "checks_passed": 357,
+      "checks_total": 1468
+    },
+    "hard_shoplocal_formulas_2": {
+      "total_score": 0.0308,
+      "checks_passed": 72,
+      "checks_total": 2336
     }
   }
 }

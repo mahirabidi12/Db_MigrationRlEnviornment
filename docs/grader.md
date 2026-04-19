@@ -127,6 +127,8 @@ These reasons are included in both `failed_checks` and `metadata.evaluation_resu
 
 ## Check Distribution Per Task
 
+### Compact tasks
+
 | Check Type | Easy | Medium | Hard |
 |---|---|---|---|
 | `table_exists` | 6 | 8 | 9 |
@@ -141,6 +143,22 @@ These reasons are included in both `failed_checks` and `metadata.evaluation_resu
 | `data_row_correct` | 17 | 30 | 35 |
 | **Total** | **137** | **171** | **209** |
 
+### Expanded tasks (`*_2`)
+
+| Check Type | Easy 2 | Medium 2 | Hard 2 |
+|---|---|---|---|
+| `table_exists` | 41 | 44 | 55 |
+| `column_exists` | 381 | 282 | 504 |
+| `column_type_correct` | 381 | 282 | 504 |
+| `column_nullable_correct` | 227 | 186 | 312 |
+| `column_primary_key_correct` | 41 | 44 | 55 |
+| `column_default_correct` | 65 | 68 | 98 |
+| `fk_exists` | 63 | 58 | 72 |
+| `index_exists` | 48 | — | — |
+| `table_removed` | 31 | 25 | 35 |
+| `data_row_correct` | 400 | 479 | 701 |
+| **Total** | **1,635+** | **1,468** | **2,336** |
+
 ---
 
 ## Design Properties
@@ -148,7 +166,7 @@ These reasons are included in both `failed_checks` and `metadata.evaluation_resu
 | Property | Description |
 |---|---|
 | **Deterministic** | Same database state always produces the same score. No randomness or LLM-based evaluation |
-| **Granular** | 194-249 checks per task. A single correct `CREATE TABLE` can pass 10+ checks. A single correct `INSERT` can pass several more |
+| **Granular** | 137-249 checks per compact task, 1,468-2,336 checks per expanded (`*_2`) task. A single correct `CREATE TABLE` can pass 10+ checks on compact tasks and 15+ on expanded tasks. A single correct `INSERT` can pass several more |
 | **Transparent** | Every failed check has a human-readable reason. No black-box scoring |
 | **Unweighted** | Every check is worth exactly 1 point. No hidden multipliers or dimension weights |
 | **Zero-start** | Acquisition theme ensures zero table name overlap between initial and target schemas. Score starts at 0.0 |
